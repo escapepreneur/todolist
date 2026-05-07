@@ -20,10 +20,10 @@
   <script type="text/babel">
     const { useState, useEffect, useRef } = React;
 
-    const db = window.supabase.createClient(
-      'https://gktcjytkfjynszblxrkd.supabase.co',
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdrdGNqeXRrZmp5bnN6Ymx4cmtkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxODc3ODMsImV4cCI6MjA5Mzc2Mzc4M30.PxryowTUoSmD23a2MGSE7NOi1YebuWniqQaB7LbkHUM'
-    );
+    const SUPABASE_URL = 'https://gktcjytkfjynszblxrkd.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdrdGNqeXRrZmp5bnN6Ymx4cmtkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxODc3ODMsImV4cCI6MjA5Mzc2Mzc4M30.PxryowTUoSmD23a2MGSE7NOi1YebuWniqQaB7LbkHUM';
+    const EDGE_URL   = `${SUPABASE_URL}/functions/v1/ask-claude`;
+    const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
     const CAT_COLORS = { Personal:"#8b5cf6", Business:"#29abac", Urgent:"#ef4444", Other:"#f59e0b" };
     const CATS = ["Business","Personal","Urgent","Other"];
@@ -164,9 +164,6 @@
       );
     }
 
-    const EDGE_FN_URL = 'https://gktcjytkfjynszblxrkd.supabase.co/functions/v1/ask-claude';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdrdGNqeXRrZmp5bnN6Ymx4cmtkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxODc3ODMsImV4cCI6MjA5Mzc2Mzc4M30.PxryowTUoSmD23a2MGSE7NOi1YebuWniqQaB7LbkHUM';
-
     function App() {
       const [tasks,setTasks]=useState([]);
       const [ideas,setIdeas]=useState([]);
@@ -199,6 +196,7 @@
       const aiRef=useRef(null);
       const tasksRef=useRef(tasks);
       const ideasRef=useRef(ideas);
+
       useEffect(()=>{tasksRef.current=tasks;},[tasks]);
       useEffect(()=>{ideasRef.current=ideas;},[ideas]);
       useEffect(()=>{aiEnd.current?.scrollIntoView({behavior:"smooth"});},[aiChat,aiLoading]);
@@ -281,10 +279,18 @@
       const editText=async(id,text)=>{await db.from('tasks').update({text}).eq('id',id);setTasks(p=>p.map(t=>t.id===id?{...t,text}:t));};
       const editDue=async(id,due)=>{await db.from('tasks').update({due:due||null}).eq('id',id);setTasks(p=>p.map(t=>t.id===id?{...t,due}:t));};
 
+      const dragHandlers={
+        start:(e,id)=>{dragId.current=id;e.dataTransfer.effectAllowed="move";},
+        over:(e,id)=>{e.preventDefault();setDragOver(id);},
+        drop:(e,id)=>{e.preventDefault();const from=dragId.current;if(!from||from===id){dragId.current=null;setDragOver(null);return;}setTasks(prev=>{const a=[...prev];const fi=a.findIndex(t=>t.id===from);const ti=a.findIndex(t=>t.id===id);const[r]=a.splice(fi,1);a.splice(ti,0,r);return a;});dragId.current=null;setDragOver(null);},
+        end:()=>{dragId.current=null;setDragOver(null);}
+      };
+
       const sendAi=async()=>{
         const msg=aiInput.trim();if(!msg||aiLoading)return;
         setAiInput("");
-        const nc=[...aiChat,{role:"user",content:msg}];setAiChat(nc);setAiLoading(true);
+        const nc=[...aiChat,{role:"user",content:msg}];
+        setAiChat(nc);setAiLoading(true);
         try{
           const ct=tasksRef.current; const ci=ideasRef.current;
           const sys=`You are a friendly task assistant. Keep replies SHORT and warm — 1-2 sentences max.
@@ -294,10 +300,16 @@ IDEAS:\n${ci.length?ci.map(i=>`ID:${i.id}|${i.text}`).join("\n"):"none"}
 Categories: Business,Personal,Urgent,Other. Priorities: Urgent,High,Normal. Dates: YYYY-MM-DD.
 Respond ONLY with valid JSON: {"message":"...","actions":[]}
 Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_due|add_idea|delete_idea`;
-          const res=await fetch(EDGE_FN_URL,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${SUPABASE_ANON_KEY}`},body:JSON.stringify({system:sys,messages:nc.map(m=>({role:m.role,content:m.content}))})});
+          const res=await fetch(EDGE_URL,{
+            method:"POST",
+            headers:{"Content-Type":"application/json","Authorization":`Bearer ${SUPABASE_KEY}`},
+            body:JSON.stringify({system:sys,messages:nc.map(m=>({role:m.role,content:m.content}))})
+          });
           const data=await res.json();
           const raw=(data.content?.[0]?.text||"").trim();
-          let parsed;try{parsed=JSON.parse(raw.replace(/```json|```/g,"").trim());}catch{parsed={message:raw,actions:[]};}
+          let parsed;
+          try{parsed=JSON.parse(raw.replace(/```json|```/g,"").trim());}
+          catch{parsed={message:raw,actions:[]};}
           if(parsed.actions?.length){
             for(const a of parsed.actions){
               if(a.type==="add"){const{data:d}=await db.from('tasks').insert({text:a.text,cat:a.cat||"Business",priority:a.priority||"Normal",due:a.due||null,done:false}).select().single();if(d)setTasks(p=>[mapTask(d),...p]);}
@@ -313,13 +325,10 @@ Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_du
             }
           }
           setAiChat(p=>[...p,{role:"assistant",content:parsed.message||"Done!"}]);
-        }catch(e){setAiChat(p=>[...p,{role:"assistant",content:"Something went wrong — try again."}]);}
+        }catch(e){
+          setAiChat(p=>[...p,{role:"assistant",content:"Something went wrong — try again."}]);
+        }
         setAiLoading(false);
-      };
-        start:(e,id)=>{dragId.current=id;e.dataTransfer.effectAllowed="move";},
-        over:(e,id)=>{e.preventDefault();setDragOver(id);},
-        drop:(e,id)=>{e.preventDefault();const from=dragId.current;if(!from||from===id){dragId.current=null;setDragOver(null);return;}setTasks(prev=>{const a=[...prev];const fi=a.findIndex(t=>t.id===from);const ti=a.findIndex(t=>t.id===id);const[r]=a.splice(fi,1);a.splice(ti,0,r);return a;});dragId.current=null;setDragOver(null);},
-        end:()=>{dragId.current=null;setDragOver(null);}
       };
 
       const filtered=filter==="All"?tasks:tasks.filter(t=>t.cat===filter);
@@ -345,6 +354,7 @@ Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_du
       return (
         <div style={{fontFamily:"'Inter',sans-serif",background:"#f5f5f5",minHeight:"100vh",color:"#111",display:"flex",flexDirection:"column",maxWidth:780,margin:"0 auto"}} onClick={()=>{setPriMenu(null);setPromoId(null);}}>
 
+          {/* Header */}
           <div style={{background:"#fff",borderBottom:"1px solid #e5e5e5",padding:"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:40}}>
             <div>
               <div style={{fontWeight:800,fontSize:18,color:"#29abac",letterSpacing:-0.5}}>Karen's Task List</div>
@@ -355,10 +365,13 @@ Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_du
                 {totalDone>0&&<span> &bull; {totalDone} done today</span>}
               </div>
             </div>
-            {totalDone>0&&<button onClick={e=>{e.stopPropagation();clearDone();}} style={{background:"transparent",border:"1px solid #ddd",color:"#666",borderRadius:8,padding:"6px 12px",fontSize:12,cursor:"pointer"}}>Clear {totalDone} done</button>}
-            {tab==="tasks"&&<button onClick={e=>{e.stopPropagation();setAiOpen(o=>!o);}} style={{background:aiOpen?"#29abac":"#f0fafa",border:"1px solid #29abac44",color:aiOpen?"#fff":"#29abac",borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}><span>✦</span> Ask Claude</button>}
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              {totalDone>0&&<button onClick={e=>{e.stopPropagation();clearDone();}} style={{background:"transparent",border:"1px solid #ddd",color:"#666",borderRadius:8,padding:"6px 12px",fontSize:12,cursor:"pointer"}}>Clear {totalDone} done</button>}
+              {tab==="tasks"&&<button onClick={e=>{e.stopPropagation();setAiOpen(o=>!o);}} style={{background:aiOpen?"#29abac":"#f0fafa",border:"1px solid #29abac44",color:aiOpen?"#fff":"#29abac",borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}><span>✦</span> Ask Claude</button>}
+            </div>
           </div>
 
+          {/* Ask Claude panel */}
           {tab==="tasks"&&aiOpen&&(
             <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderBottom:"1px solid #e5e5e5",padding:"12px 20px",display:"flex",flexDirection:"column",gap:8}}>
               <div style={{fontSize:12,color:"#888"}}>Type naturally — e.g. <em>"Add call accountant to Business, High, due Friday"</em> or <em>"Mark the survey task done"</em></div>
@@ -379,12 +392,14 @@ Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_du
             </div>
           )}
 
+          {/* Tabs */}
           <div style={{display:"flex",borderBottom:"1px solid #e5e5e5",background:"#fff",position:"sticky",top:57,zIndex:40}}>
             {[["tasks","Tasks"],["ideas",`Ideas${ideas.length?` (${ideas.length})`:""}`],["recurring",`Recurring${recTasks.length?` (${recTasks.length})`:""}`]].map(([k,l])=>(
               <button key={k} onClick={()=>setTab(k)} style={{flex:1,padding:"10px",border:"none",background:"transparent",color:tab===k?"#29abac":"#666",fontWeight:700,fontSize:13,borderBottom:tab===k?"2px solid #29abac":"2px solid transparent",cursor:"pointer"}}>{l}</button>
             ))}
           </div>
 
+          {/* Tasks tab */}
           {tab==="tasks"&&(
             <div style={{flex:1}}>
               <div style={{padding:"14px 20px",borderBottom:"1px solid #ebebeb",background:"#fafafa"}}>
@@ -432,6 +447,7 @@ Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_du
             </div>
           )}
 
+          {/* Ideas tab */}
           {tab==="ideas"&&(
             <div style={{flex:1}}>
               <div style={{padding:"14px 20px",borderBottom:"1px solid #ebebeb",background:"#fafafa"}}>
@@ -463,6 +479,7 @@ Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_du
             </div>
           )}
 
+          {/* Recurring tab */}
           {tab==="recurring"&&(
             <div style={{flex:1}}>
               <div style={{padding:"14px 20px",borderBottom:"1px solid #ebebeb",background:"#fafafa"}}>
