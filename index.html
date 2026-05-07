@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Karen's Task List</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+    body { background: #f5f5f5; }
+    ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-thumb { background: #ddd; border-radius: 2px; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    const db = window.supabase.createClient(
+      'https://gktcjytkfjynszblxrkd.supabase.co',
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdrdGNqeXRrZmp5bnN6Ymx4cmtkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxODc3ODMsImV4cCI6MjA5Mzc2Mzc4M30.PxryowTUoSmD23a2MGSE7NOi1YebuWniqQaB7LbkHUM'
+    );
+
+    const CAT_COLORS = { Personal:"#8b5cf6", Business:"#29abac", Urgent:"#ef4444", Other:"#f59e0b" };
+    const CATS = ["Business","Personal","Urgent","Other"];
+    const PRIORITY_CONFIG = {
+      Urgent:{ color:"#ef4444", bg:"#fef2f2", border:"#fecaca" },
+      High:  { color:"#f97316", bg:"#fff7ed", border:"#fed7aa" },
+      Normal:{ color:"#9ca3af", bg:"#f9fafb", border:"#e5e7eb" }
+    };
+    const PRIORITIES = ["Urgent","High","Normal"];
+    const DAYS = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+
+    const todayStr = () => new Date().toISOString().split("T")[0];
+    const isOverdue = due => !!due && due < todayStr();
+    const isDueSoon = due => { if(!due) return false; const d=(new Date(due)-new Date(todayStr()))/86400000; return d>=0&&d<=2; };
+    const fmtDue    = due => due ? new Date(due).toLocaleDateString("en-GB",{day:"numeric",month:"short"}) : null;
+
+    const mapTask = t => ({ id:t.id, text:t.text, cat:t.cat, priority:t.priority, due:t.due, done:t.done, recurringId:t.recurring_id, at:t.created_at });
+    const mapIdea = i => ({ id:i.id, text:i.text, at:i.created_at });
+    const mapRec  = r => ({ id:r.id, text:r.text, cat:r.cat, priority:r.priority, freq:r.freq, dayOfWeek:r.day_of_week, dayOfMonth:r.day_of_month, dueDays:r.due_days });
+
+    function shouldFire(rec, tasks) {
+      const now=new Date(); const today=todayStr();
+      if(tasks.some(t=>t.recurringId===rec.id&&t.at?.startsWith(today))) return false;
+      if(rec.freq==="daily") return true;
+      if(rec.freq==="weekly"&&rec.dayOfWeek===now.getDay()) return true;
+      if(rec.freq==="monthly"&&rec.dayOfMonth===now.getDate()) return true;
+      return false;
+    }
+
+    function CatBadge({ cat }) {
+      return <span style={{background:CAT_COLORS[cat]+"18",color:CAT_COLORS[cat],border:`1px solid ${CAT_COLORS[cat]}44`,borderRadius:99,fontSize:11,fontWeight:500,padding:"1px 8px",whiteSpace:"nowrap"}}>{cat}</span>;
+    }
+    function DueChip({ due }) {
+      if(!due) return null;
+      const ov=isOverdue(due),ds=isDueSoon(due);
+      const color=ov?"#ef4444":ds?"#f97316":"#9ca3af";
+      const bg=ov?"#fef2f2":ds?"#fff7ed":"#f9fafb";
+      const bdr=ov?"#fecaca":ds?"#fed7aa":"#e5e7eb";
+      return <span style={{background:bg,color,border:`1px solid ${bdr}`,borderRadius:99,fontSize:11,fontWeight:600,padding:"2px 8px",whiteSpace:"nowrap"}}>{ov?`Overdue · ${fmtDue(due)}`:ds?`Due soon · ${fmtDue(due)}`:fmtDue(due)}</span>;
+    }
+    function SectionHeader({ label, color, count }) {
+      return (
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}>
+          <span style={{width:8,height:8,borderRadius:"50%",background:color,flexShrink:0}}/>
+          <span style={{fontSize:11,fontWeight:700,color,textTransform:"uppercase",letterSpacing:0.8}}>{label} ({count})</span>
+          <span style={{flex:1,height:1,background:color+"22"}}/>
+        </div>
+      );
+    }
+
+    function TaskRow({ t, onToggle, onRemove, onSetPriority, onEditText, onEditDue, priorityMenu, setPriorityMenu, dragHandlers, isDragOver }) {
+      const [editingText,setEditingText]=useState(false);
+      const [editVal,setEditVal]=useState(t.text);
+      const [editingDue,setEditingDue]=useState(false);
+      const eRef=useRef(null);
+      const pc=PRIORITY_CONFIG[t.priority];
+      const startEdit=()=>{setEditingText(true);setEditVal(t.text);setTimeout(()=>eRef.current?.focus(),0);};
+      const saveEdit=()=>{if(editVal.trim())onEditText(t.id,editVal.trim());setEditingText(false);};
+      return (
+        <div draggable onDragStart={e=>dragHandlers.start(e,t.id)} onDragOver={e=>dragHandlers.over(e,t.id)} onDrop={e=>dragHandlers.drop(e,t.id)} onDragEnd={dragHandlers.end} onClick={e=>e.stopPropagation()}
+          style={{background:"#fff",border:`1px solid ${isDragOver?"#29abac":"#e8e8e8"}`,borderLeft:`4px solid ${pc.color}`,borderRadius:10,padding:"10px 14px",display:"flex",alignItems:"center",gap:10,boxShadow:isDragOver?"0 0 0 2px #29abac44":"0 1px 3px rgba(0,0,0,0.04)",position:"relative",marginBottom:6}}>
+          <span title="Drag to reorder" style={{cursor:"grab",color:"#ccc",fontSize:16,flexShrink:0,userSelect:"none"}}>⠿</span>
+          <button onClick={()=>onToggle(t.id)} style={{width:20,height:20,borderRadius:6,border:`2px solid ${CAT_COLORS[t.cat]}`,background:"transparent",cursor:"pointer",flexShrink:0}}/>
+          <div style={{flex:1,display:"flex",flexDirection:"column",gap:4,minWidth:0}}>
+            {editingText
+              ? <input ref={eRef} value={editVal} onChange={e=>setEditVal(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")saveEdit();if(e.key==="Escape")setEditingText(false);}} onBlur={saveEdit} style={{fontSize:14,fontWeight:"normal",border:"none",borderBottom:"2px solid #29abac",outline:"none",background:"transparent",color:"#111",width:"100%",padding:"1px 0"}}/>
+              : <span onClick={startEdit} title="Click to edit" style={{fontSize:14,fontWeight:"normal",lineHeight:1.4,cursor:"text"}}>{t.text}{t.recurringId&&<span style={{marginLeft:6,fontSize:10,color:"#29abac",fontWeight:600}}>↻</span>}</span>
+            }
+            <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+              {!editingDue&&t.due&&<DueChip due={t.due}/>}
+              {editingDue
+                ? <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <input type="date" defaultValue={t.due||""} autoFocus onChange={e=>{onEditDue(t.id,e.target.value||null);setEditingDue(false);}} onBlur={()=>setEditingDue(false)} onKeyDown={e=>{if(e.key==="Escape")setEditingDue(false);}} style={{background:"#fff",border:"1px solid #29abac",borderRadius:6,padding:"2px 6px",fontSize:12,outline:"none"}}/>
+                    {t.due&&<button onClick={()=>{onEditDue(t.id,null);setEditingDue(false);}} style={{background:"transparent",border:"none",color:"#ef4444",fontSize:11,cursor:"pointer",padding:0}}>Remove</button>}
+                  </div>
+                : <button onClick={e=>{e.stopPropagation();setEditingDue(true);}} style={{background:"transparent",border:"none",color:"#bbb",fontSize:11,cursor:"pointer",padding:0,textDecoration:"underline"}}>{t.due?"Edit date":"+ Add due date"}</button>
+              }
+            </div>
+          </div>
+          <div style={{position:"relative",flexShrink:0}}>
+            <button onClick={e=>{e.stopPropagation();setPriorityMenu(priorityMenu===t.id?null:t.id);}} style={{background:pc.bg,color:pc.color,border:`1px solid ${pc.border}`,borderRadius:99,fontSize:11,fontWeight:700,padding:"2px 9px",cursor:"pointer",whiteSpace:"nowrap"}}>{t.priority}</button>
+            {priorityMenu===t.id&&(
+              <div style={{position:"absolute",right:0,top:26,background:"#fff",border:"1px solid #e5e5e5",borderRadius:8,boxShadow:"0 4px 16px rgba(0,0,0,0.1)",zIndex:30,minWidth:110,overflow:"hidden"}}>
+                {PRIORITIES.map(p=>(
+                  <button key={p} onClick={e=>{e.stopPropagation();onSetPriority(t.id,p);}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"8px 12px",border:"none",background:t.priority===p?PRIORITY_CONFIG[p].bg:"#fff",color:PRIORITY_CONFIG[p].color,fontSize:13,fontWeight:t.priority===p?700:400,cursor:"pointer"}}>
+                    <span style={{width:8,height:8,borderRadius:"50%",background:PRIORITY_CONFIG[p].color,flexShrink:0}}/>{p}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <CatBadge cat={t.cat}/>
+          <button onClick={()=>onRemove(t.id)} style={{background:"transparent",border:"none",color:"#ccc",cursor:"pointer",fontSize:18,padding:0,lineHeight:1,flexShrink:0}}>×</button>
+        </div>
+      );
+    }
+
+    function RecurringRow({ r, onRemove, onUpdate, onForce }) {
+      const [editing,setEditing]=useState(false);
+      const [txt,setTxt]=useState(r.text); const [cat,setCat]=useState(r.cat); const [pri,setPri]=useState(r.priority);
+      const [freq,setFreq]=useState(r.freq); const [dow,setDow]=useState(r.dayOfWeek??1); const [dom,setDom]=useState(r.dayOfMonth??1); const [dd,setDd]=useState(r.dueDays??"");
+      const save=()=>{onUpdate(r.id,{text:txt,cat,priority:pri,freq,dayOfWeek:freq==="weekly"?dow:null,dayOfMonth:freq==="monthly"?dom:null,dueDays:dd?Number(dd):null});setEditing(false);};
+      const freqLabel=r.freq==="daily"?"Every day":r.freq==="weekly"?`Every ${DAYS[r.dayOfWeek??1]}`:`Monthly on the ${r.dayOfMonth??1}${[,"st","nd","rd"][(r.dayOfMonth??1)]||"th"}`;
+      const dueLabel=r.dueDays?`due in ${r.dueDays} day${r.dueDays===1?"":"s"}`:"no due date";
+      return (
+        <div style={{background:"#fff",border:"1px solid #e8e8e8",borderLeft:"4px solid #29abac",borderRadius:10,padding:"10px 14px",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",marginBottom:6}}>
+          {!editing?(
+            <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+              <span style={{fontSize:16,color:"#29abac",flexShrink:0}}>↻</span>
+              <div style={{flex:1,minWidth:120}}>
+                <div style={{fontSize:14,fontWeight:"normal"}}>{r.text}</div>
+                <div style={{fontSize:11,color:"#999",marginTop:2}}>{freqLabel} &bull; {dueLabel}</div>
+              </div>
+              <span style={{background:PRIORITY_CONFIG[r.priority].bg,color:PRIORITY_CONFIG[r.priority].color,border:`1px solid ${PRIORITY_CONFIG[r.priority].border}`,borderRadius:99,fontSize:11,fontWeight:700,padding:"2px 9px",whiteSpace:"nowrap"}}>{r.priority}</span>
+              <CatBadge cat={r.cat}/>
+              <button onClick={()=>onForce(r)} style={{background:"#f0fafa",border:"1px solid #29abac44",color:"#29abac",borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>Add to tasks now</button>
+              <button onClick={()=>setEditing(true)} style={{background:"#f9fafb",border:"1px solid #ddd",color:"#666",borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>Edit</button>
+              <button onClick={()=>onRemove(r.id)} style={{background:"transparent",border:"none",color:"#ccc",cursor:"pointer",fontSize:18,padding:0,lineHeight:1}}>×</button>
+            </div>
+          ):(
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              <input value={txt} onChange={e=>setTxt(e.target.value)} style={{background:"#f9fafb",border:"1px solid #ddd",borderRadius:8,padding:"7px 10px",fontSize:14,outline:"none",fontWeight:400,color:"#111"}}/>
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}><span style={{fontSize:11,color:"#999",width:56}}>Category</span>{CATS.map(c=><button key={c} onClick={()=>setCat(c)} style={{background:cat===c?CAT_COLORS[c]+"18":"#fff",border:`1px solid ${cat===c?CAT_COLORS[c]:"#ddd"}`,color:cat===c?CAT_COLORS[c]:"#666",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:500,cursor:"pointer"}}>{c}</button>)}</div>
+                <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}><span style={{fontSize:11,color:"#999",width:56}}>Priority</span>{PRIORITIES.map(p=><button key={p} onClick={()=>setPri(p)} style={{background:pri===p?PRIORITY_CONFIG[p].bg:"#fff",border:`1px solid ${pri===p?PRIORITY_CONFIG[p].color:"#ddd"}`,color:pri===p?PRIORITY_CONFIG[p].color:"#666",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:500,cursor:"pointer"}}>{p}</button>)}</div>
+                <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}><span style={{fontSize:11,color:"#999",width:56}}>Repeat</span>{["daily","weekly","monthly"].map(f=><button key={f} onClick={()=>setFreq(f)} style={{background:freq===f?"#29abac18":"#fff",border:`1px solid ${freq===f?"#29abac":"#ddd"}`,color:freq===f?"#29abac":"#666",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:500,cursor:"pointer",textTransform:"capitalize"}}>{f}</button>)}</div>
+                {freq==="weekly"&&<div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}><span style={{fontSize:11,color:"#999",width:56}}>Day</span>{DAYS.map((d,i)=><button key={d} onClick={()=>setDow(i)} style={{background:dow===i?"#29abac18":"#fff",border:`1px solid ${dow===i?"#29abac":"#ddd"}`,color:dow===i?"#29abac":"#666",borderRadius:99,padding:"2px 8px",fontSize:11,fontWeight:500,cursor:"pointer"}}>{d.slice(0,3)}</button>)}</div>}
+                {freq==="monthly"&&<div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:11,color:"#999",width:56}}>Date</span><input type="number" min="1" max="28" value={dom} onChange={e=>setDom(Number(e.target.value))} style={{width:48,background:"#fff",border:"1px solid #ddd",borderRadius:6,padding:"2px 6px",fontSize:12,outline:"none"}}/></div>}
+                <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:11,color:"#999",width:56}}>Due in</span><input type="number" min="1" max="30" value={dd} onChange={e=>setDd(e.target.value)} placeholder="days" style={{width:48,background:"#fff",border:"1px solid #ddd",borderRadius:6,padding:"2px 6px",fontSize:12,outline:"none"}}/><span style={{fontSize:11,color:"#999"}}>days after it appears</span>{dd&&<button onClick={()=>setDd("")} style={{background:"transparent",border:"none",color:"#bbb",fontSize:13,cursor:"pointer",padding:0}}>×</button>}</div>
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={save} style={{background:"#29abac",border:"none",color:"#fff",fontWeight:700,borderRadius:8,padding:"6px 14px",fontSize:12,cursor:"pointer"}}>Save</button>
+                <button onClick={()=>setEditing(false)} style={{background:"transparent",border:"1px solid #ddd",color:"#666",borderRadius:8,padding:"6px 14px",fontSize:12,cursor:"pointer"}}>Cancel</button>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function App() {
+      const [tasks,setTasks]=useState([]);
+      const [ideas,setIdeas]=useState([]);
+      const [recTasks,setRecTasks]=useState([]);
+      const [loading,setLoading]=useState(true);
+      const [filter,setFilter]=useState("All");
+      const [newText,setNewText]=useState("");
+      const [newCat,setNewCat]=useState("Business");
+      const [newPri,setNewPri]=useState("Normal");
+      const [newDue,setNewDue]=useState("");
+      const [newIdea,setNewIdea]=useState("");
+      const [promoId,setPromoId]=useState(null);
+      const [tab,setTab]=useState("tasks");
+      const [priMenu,setPriMenu]=useState(null);
+      const [dragOver,setDragOver]=useState(null);
+      const [recText,setRecText]=useState("");
+      const [recCat,setRecCat]=useState("Business");
+      const [recPri,setRecPri]=useState("Normal");
+      const [recFreq,setRecFreq]=useState("weekly");
+      const [recDay,setRecDay]=useState(1);
+      const [recDom,setRecDom]=useState(1);
+      const [recDueDays,setRecDueDays]=useState("");
+      const dragId=useRef(null);
+      const inputRef=useRef(null);
+
+      useEffect(()=>{
+        (async()=>{
+          try {
+            const [tr,ir,rr]=await Promise.all([
+              db.from('tasks').select('*').order('created_at',{ascending:false}),
+              db.from('ideas').select('*').order('created_at',{ascending:false}),
+              db.from('recurring_tasks').select('*').order('created_at',{ascending:true})
+            ]);
+            const lt=(tr.data||[]).map(mapTask);
+            const li=(ir.data||[]).map(mapIdea);
+            const lr=(rr.data||[]).map(mapRec);
+            setTasks(lt); setIdeas(li); setRecTasks(lr);
+            const calcD=days=>{if(!days)return null;const d=new Date();d.setDate(d.getDate()+days);return d.toISOString().split("T")[0];};
+            const toFire=lr.filter(r=>shouldFire(r,lt));
+            if(toFire.length>0){
+              const rows=toFire.map(r=>({text:r.text,cat:r.cat,priority:r.priority,due:calcD(r.dueDays),done:false,recurring_id:r.id}));
+              const {data:ins}=await db.from('tasks').insert(rows).select();
+              if(ins) setTasks(p=>[...ins.map(mapTask),...p]);
+            }
+          } catch(e){console.error(e);}
+          setLoading(false);
+        })();
+      },[]);
+
+      const calcDue=days=>{if(!days)return null;const d=new Date();d.setDate(d.getDate()+days);return d.toISOString().split("T")[0];};
+
+      const addTask=async()=>{
+        if(!newText.trim())return;
+        const {data}=await db.from('tasks').insert({text:newText.trim(),cat:newCat,priority:newPri,due:newDue||null,done:false}).select().single();
+        if(data)setTasks(p=>[mapTask(data),...p]);
+        setNewText("");setNewDue("");inputRef.current?.focus();
+      };
+      const addIdea=async()=>{
+        if(!newIdea.trim())return;
+        const {data}=await db.from('ideas').insert({text:newIdea.trim()}).select().single();
+        if(data)setIdeas(p=>[mapIdea(data),...p]);
+        setNewIdea("");
+      };
+      const addRec=async()=>{
+        if(!recText.trim())return;
+        const {data}=await db.from('recurring_tasks').insert({text:recText.trim(),cat:recCat,priority:recPri,freq:recFreq,day_of_week:recFreq==="weekly"?recDay:null,day_of_month:recFreq==="monthly"?recDom:null,due_days:recDueDays?Number(recDueDays):null}).select().single();
+        if(data)setRecTasks(p=>[...p,mapRec(data)]);
+        setRecText("");setRecDueDays("");
+      };
+      const removeRec=async(id)=>{await db.from('recurring_tasks').delete().eq('id',id);setRecTasks(p=>p.filter(r=>r.id!==id));};
+      const updateRec=async(id,ch)=>{
+        await db.from('recurring_tasks').update({text:ch.text,cat:ch.cat,priority:ch.priority,freq:ch.freq,day_of_week:ch.dayOfWeek,day_of_month:ch.dayOfMonth,due_days:ch.dueDays}).eq('id',id);
+        setRecTasks(p=>p.map(r=>r.id===id?{...r,...ch}:r));
+      };
+      const forceRec=async(r)=>{
+        const {data}=await db.from('tasks').insert({text:r.text,cat:r.cat,priority:r.priority,due:calcDue(r.dueDays),done:false,recurring_id:r.id}).select().single();
+        if(data)setTasks(p=>[mapTask(data),...p]);
+        setTab("tasks");
+      };
+      const promoteIdea=async(idea,cat)=>{
+        const {data}=await db.from('tasks').insert({text:idea.text,cat,priority:"Normal",due:null,done:false}).select().single();
+        if(data)setTasks(p=>[mapTask(data),...p]);
+        await db.from('ideas').delete().eq('id',idea.id);
+        setIdeas(p=>p.filter(i=>i.id!==idea.id));
+        setPromoId(null);setTab("tasks");
+      };
+      const toggle=async(id)=>{
+        const t=tasks.find(t=>t.id===id);if(!t)return;
+        await db.from('tasks').update({done:!t.done}).eq('id',id);
+        setTasks(p=>p.map(t=>t.id===id?{...t,done:!t.done}:t));
+      };
+      const remove=async(id)=>{await db.from('tasks').delete().eq('id',id);setTasks(p=>p.filter(t=>t.id!==id));};
+      const clearDone=async()=>{
+        const ids=tasks.filter(t=>t.done).map(t=>t.id);
+        if(!ids.length)return;
+        await db.from('tasks').delete().in('id',ids);
+        setTasks(p=>p.filter(t=>!t.done));
+      };
+      const setPri=async(id,priority)=>{await db.from('tasks').update({priority}).eq('id',id);setTasks(p=>p.map(t=>t.id===id?{...t,priority}:t));setPriMenu(null);};
+      const editText=async(id,text)=>{await db.from('tasks').update({text}).eq('id',id);setTasks(p=>p.map(t=>t.id===id?{...t,text}:t));};
+      const editDue=async(id,due)=>{await db.from('tasks').update({due:due||null}).eq('id',id);setTasks(p=>p.map(t=>t.id===id?{...t,due}:t));};
+
+      const dragHandlers={
+        start:(e,id)=>{dragId.current=id;e.dataTransfer.effectAllowed="move";},
+        over:(e,id)=>{e.preventDefault();setDragOver(id);},
+        drop:(e,id)=>{e.preventDefault();const from=dragId.current;if(!from||from===id){dragId.current=null;setDragOver(null);return;}setTasks(prev=>{const a=[...prev];const fi=a.findIndex(t=>t.id===from);const ti=a.findIndex(t=>t.id===id);const[r]=a.splice(fi,1);a.splice(ti,0,r);return a;});dragId.current=null;setDragOver(null);},
+        end:()=>{dragId.current=null;setDragOver(null);}
+      };
+
+      const filtered=filter==="All"?tasks:tasks.filter(t=>t.cat===filter);
+      const activeTasks=filtered.filter(t=>!t.done);
+      const overdueTasks=activeTasks.filter(t=>isOverdue(t.due));
+      const dueSoonTasks=activeTasks.filter(t=>isDueSoon(t.due)&&!isOverdue(t.due));
+      const overdueIds=new Set(overdueTasks.map(t=>t.id));
+      const dueSoonIds=new Set(dueSoonTasks.map(t=>t.id));
+      const remaining=activeTasks.filter(t=>!overdueIds.has(t.id)&&!dueSoonIds.has(t.id));
+      const priGroups=PRIORITIES.map(p=>({priority:p,items:remaining.filter(t=>t.priority===p)})).filter(g=>g.items.length>0);
+      const doneTasks=filtered.filter(t=>t.done);
+      const totalDone=tasks.filter(t=>t.done).length;
+      const urgentCount=tasks.filter(t=>!t.done&&t.priority==="Urgent").length;
+      const overdueCount=tasks.filter(t=>!t.done&&isOverdue(t.due)).length;
+      const trp={onToggle:toggle,onRemove:remove,onSetPriority:setPri,onEditText:editText,onEditDue:editDue,priorityMenu:priMenu,setPriorityMenu:setPriMenu,dragHandlers};
+
+      if(loading) return (
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh"}}>
+          <div style={{textAlign:"center"}}><div style={{fontSize:28,color:"#29abac",marginBottom:8}}>✦</div><div style={{color:"#999",fontSize:14}}>Loading your tasks...</div></div>
+        </div>
+      );
+
+      return (
+        <div style={{fontFamily:"'Inter',sans-serif",background:"#f5f5f5",minHeight:"100vh",color:"#111",display:"flex",flexDirection:"column",maxWidth:780,margin:"0 auto"}} onClick={()=>{setPriMenu(null);setPromoId(null);}}>
+
+          <div style={{background:"#fff",borderBottom:"1px solid #e5e5e5",padding:"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:40}}>
+            <div>
+              <div style={{fontWeight:800,fontSize:18,color:"#29abac",letterSpacing:-0.5}}>Karen's Task List</div>
+              <div style={{fontSize:12,color:"#666",marginTop:2}}>
+                {tasks.filter(t=>!t.done).length} active
+                {urgentCount>0&&<span style={{color:"#ef4444",fontWeight:700}}> &bull; {urgentCount} urgent</span>}
+                {overdueCount>0&&<span style={{color:"#ef4444",fontWeight:700}}> &bull; {overdueCount} overdue</span>}
+                {totalDone>0&&<span> &bull; {totalDone} done today</span>}
+              </div>
+            </div>
+            {totalDone>0&&<button onClick={e=>{e.stopPropagation();clearDone();}} style={{background:"transparent",border:"1px solid #ddd",color:"#666",borderRadius:8,padding:"6px 12px",fontSize:12,cursor:"pointer"}}>Clear {totalDone} done</button>}
+          </div>
+
+          <div style={{display:"flex",borderBottom:"1px solid #e5e5e5",background:"#fff",position:"sticky",top:57,zIndex:40}}>
+            {[["tasks","Tasks"],["ideas",`Ideas${ideas.length?` (${ideas.length})`:""}`],["recurring",`Recurring${recTasks.length?` (${recTasks.length})`:""}`]].map(([k,l])=>(
+              <button key={k} onClick={()=>setTab(k)} style={{flex:1,padding:"10px",border:"none",background:"transparent",color:tab===k?"#29abac":"#666",fontWeight:700,fontSize:13,borderBottom:tab===k?"2px solid #29abac":"2px solid transparent",cursor:"pointer"}}>{l}</button>
+            ))}
+          </div>
+
+          {tab==="tasks"&&(
+            <div style={{flex:1}}>
+              <div style={{padding:"14px 20px",borderBottom:"1px solid #ebebeb",background:"#fafafa"}}>
+                <div style={{display:"flex",gap:8,marginBottom:10}}>
+                  <input ref={inputRef} value={newText} onChange={e=>setNewText(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addTask()} placeholder="Add a task..." style={{flex:1,background:"#fff",border:"1px solid #ddd",borderRadius:8,padding:"9px 13px",color:"#111",fontSize:14,outline:"none",fontWeight:400}}/>
+                  <button onClick={addTask} style={{background:"#29abac",border:"none",color:"#fff",fontWeight:800,borderRadius:8,padding:"0 16px",fontSize:18,cursor:"pointer"}}>+</button>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}><span style={{fontSize:11,color:"#999",width:56}}>Category</span>{CATS.map(c=><button key={c} onClick={()=>setNewCat(c)} style={{background:newCat===c?CAT_COLORS[c]+"18":"#fff",border:`1px solid ${newCat===c?CAT_COLORS[c]:"#ddd"}`,color:newCat===c?CAT_COLORS[c]:"#666",borderRadius:99,padding:"3px 10px",fontSize:12,fontWeight:500,cursor:"pointer"}}>{c}</button>)}</div>
+                  <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}><span style={{fontSize:11,color:"#999",width:56}}>Priority</span>{PRIORITIES.map(p=><button key={p} onClick={()=>setNewPri(p)} style={{background:newPri===p?PRIORITY_CONFIG[p].bg:"#fff",border:`1px solid ${newPri===p?PRIORITY_CONFIG[p].color:"#ddd"}`,color:newPri===p?PRIORITY_CONFIG[p].color:"#666",borderRadius:99,padding:"3px 10px",fontSize:12,fontWeight:500,cursor:"pointer"}}>{p}</button>)}</div>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:11,color:"#999",width:56}}>Due</span><input type="date" value={newDue} onChange={e=>setNewDue(e.target.value)} style={{background:"#fff",border:"1px solid #ddd",borderRadius:8,padding:"3px 8px",fontSize:12,color:newDue?"#111":"#aaa",outline:"none",cursor:"pointer"}}/>{newDue&&<button onClick={()=>setNewDue("")} style={{background:"transparent",border:"none",color:"#bbb",fontSize:14,cursor:"pointer",padding:0}}>×</button>}</div>
+                </div>
+              </div>
+              <div style={{display:"flex",gap:6,padding:"10px 20px",overflowX:"auto",borderBottom:"1px solid #ebebeb",background:"#fafafa"}}>
+                {["All",...CATS].map(c=>(
+                  <button key={c} onClick={()=>setFilter(c)} style={{background:filter===c?(c==="All"?"#29abac18":CAT_COLORS[c]+"18"):"#fff",border:`1px solid ${filter===c?(c==="All"?"#29abac":CAT_COLORS[c]):"#ddd"}`,color:filter===c?(c==="All"?"#29abac":CAT_COLORS[c]):"#666",borderRadius:99,padding:"4px 12px",fontSize:12,fontWeight:500,cursor:"pointer",whiteSpace:"nowrap"}}>
+                    {c} ({c==="All"?tasks.length:tasks.filter(t=>t.cat===c).length})
+                  </button>
+                ))}
+              </div>
+              <div style={{padding:"12px 20px"}}>
+                {activeTasks.length===0&&doneTasks.length===0&&<div style={{textAlign:"center",color:"#bbb",marginTop:40,fontSize:14}}>No tasks yet. Add one above.</div>}
+                {overdueTasks.length>0&&<div style={{marginBottom:8}}><SectionHeader label="Overdue" color="#ef4444" count={overdueTasks.length}/>{overdueTasks.map(t=><TaskRow key={t.id} t={t} {...trp} isDragOver={dragOver===t.id}/>)}</div>}
+                {dueSoonTasks.length>0&&<div style={{marginBottom:8}}><SectionHeader label="Due Soon" color="#f97316" count={dueSoonTasks.length}/>{dueSoonTasks.map(t=><TaskRow key={t.id} t={t} {...trp} isDragOver={dragOver===t.id}/>)}</div>}
+                {priGroups.map(({priority,items})=>(
+                  <div key={priority} style={{marginBottom:8}}>
+                    <SectionHeader label={priority} color={PRIORITY_CONFIG[priority].color} count={items.length}/>
+                    {items.map(t=><TaskRow key={t.id} t={t} {...trp} isDragOver={dragOver===t.id}/>)}
+                  </div>
+                ))}
+                {doneTasks.length>0&&(
+                  <>
+                    <div style={{fontSize:11,color:"#bbb",fontWeight:700,marginTop:8,marginBottom:6,letterSpacing:1,textTransform:"uppercase"}}>Done today</div>
+                    {doneTasks.map(t=>(
+                      <div key={t.id} style={{background:"#fafafa",border:"1px solid #efefef",borderRadius:10,padding:"10px 14px",display:"flex",alignItems:"center",gap:10,opacity:0.55,marginBottom:6}}>
+                        <button onClick={()=>toggle(t.id)} style={{width:20,height:20,borderRadius:6,border:"none",background:CAT_COLORS[t.cat],cursor:"pointer",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:12}}>✓</button>
+                        <span style={{flex:1,fontSize:14,fontWeight:"normal",textDecoration:"line-through",color:"#bbb"}}>{t.text}</span>
+                        <CatBadge cat={t.cat}/>
+                        <button onClick={()=>remove(t.id)} style={{background:"transparent",border:"none",color:"#ddd",cursor:"pointer",fontSize:18,padding:0}}>×</button>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {tab==="ideas"&&(
+            <div style={{flex:1}}>
+              <div style={{padding:"14px 20px",borderBottom:"1px solid #ebebeb",background:"#fafafa"}}>
+                <div style={{display:"flex",gap:8}}>
+                  <input value={newIdea} onChange={e=>setNewIdea(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addIdea()} placeholder="Capture an idea..." style={{flex:1,background:"#fff",border:"1px solid #ddd",borderRadius:8,padding:"9px 13px",color:"#111",fontSize:14,outline:"none",fontWeight:400}}/>
+                  <button onClick={addIdea} style={{background:"#29abac",border:"none",color:"#fff",fontWeight:800,borderRadius:8,padding:"0 16px",fontSize:18,cursor:"pointer"}}>+</button>
+                </div>
+                <div style={{fontSize:12,color:"#bbb",marginTop:8}}>No priority, no pressure. Just get it out of your head.</div>
+              </div>
+              <div style={{padding:"12px 20px"}}>
+                {ideas.length===0&&<div style={{textAlign:"center",color:"#bbb",marginTop:40,fontSize:14}}>Nothing here yet.</div>}
+                {ideas.map(idea=>(
+                  <div key={idea.id} onClick={e=>e.stopPropagation()} style={{background:"#fff",border:"1px solid #e8e8e8",borderLeft:"4px solid #e0e0e0",borderRadius:10,padding:"10px 14px",display:"flex",alignItems:"center",gap:10,boxShadow:"0 1px 3px rgba(0,0,0,0.04)",position:"relative",marginBottom:6}}>
+                    <span style={{flex:1,fontSize:14,fontWeight:"normal",color:"#333"}}>{idea.text}</span>
+                    {promoId===idea.id?(
+                      <div style={{position:"absolute",right:40,top:0,background:"#fff",border:"1px solid #e5e5e5",borderRadius:8,padding:10,zIndex:20,boxShadow:"0 4px 16px rgba(0,0,0,0.1)",minWidth:200}}>
+                        <div style={{fontSize:11,color:"#999",fontWeight:600,marginBottom:6}}>Pick a category</div>
+                        <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8}}>{CATS.map(c=><button key={c} onClick={()=>promoteIdea(idea,c)} style={{background:CAT_COLORS[c]+"18",border:`1px solid ${CAT_COLORS[c]}44`,color:CAT_COLORS[c],borderRadius:99,padding:"3px 9px",fontSize:11,fontWeight:500,cursor:"pointer"}}>{c}</button>)}</div>
+                        <div style={{fontSize:11,color:"#bbb",marginBottom:6}}>Lands as Normal priority — change it after.</div>
+                        <button onClick={()=>setPromoId(null)} style={{background:"transparent",border:"none",color:"#bbb",fontSize:11,cursor:"pointer",padding:0}}>Cancel</button>
+                      </div>
+                    ):(
+                      <button onClick={e=>{e.stopPropagation();setPromoId(idea.id);}} style={{background:"#f0fafa",border:"1px solid #29abac44",color:"#29abac",borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>Make task</button>
+                    )}
+                    <button onClick={async()=>{await db.from('ideas').delete().eq('id',idea.id);setIdeas(p=>p.filter(i=>i.id!==idea.id));}} style={{background:"transparent",border:"none",color:"#ccc",cursor:"pointer",fontSize:18,padding:0,lineHeight:1}}>×</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {tab==="recurring"&&(
+            <div style={{flex:1}}>
+              <div style={{padding:"14px 20px",borderBottom:"1px solid #ebebeb",background:"#fafafa"}}>
+                <div style={{fontSize:12,color:"#888",marginBottom:10,lineHeight:1.5}}>Tasks set up here appear automatically in your Tasks list on the day they're due.</div>
+                <div style={{display:"flex",gap:8,marginBottom:10}}>
+                  <input value={recText} onChange={e=>setRecText(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addRec()} placeholder="Recurring task name..." style={{flex:1,background:"#fff",border:"1px solid #ddd",borderRadius:8,padding:"9px 13px",color:"#111",fontSize:14,outline:"none",fontWeight:400}}/>
+                  <button onClick={addRec} style={{background:"#29abac",border:"none",color:"#fff",fontWeight:800,borderRadius:8,padding:"0 16px",fontSize:18,cursor:"pointer"}}>+</button>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}><span style={{fontSize:11,color:"#999",width:56}}>Category</span>{CATS.map(c=><button key={c} onClick={()=>setRecCat(c)} style={{background:recCat===c?CAT_COLORS[c]+"18":"#fff",border:`1px solid ${recCat===c?CAT_COLORS[c]:"#ddd"}`,color:recCat===c?CAT_COLORS[c]:"#666",borderRadius:99,padding:"3px 10px",fontSize:12,fontWeight:500,cursor:"pointer"}}>{c}</button>)}</div>
+                  <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}><span style={{fontSize:11,color:"#999",width:56}}>Priority</span>{PRIORITIES.map(p=><button key={p} onClick={()=>setRecPri(p)} style={{background:recPri===p?PRIORITY_CONFIG[p].bg:"#fff",border:`1px solid ${recPri===p?PRIORITY_CONFIG[p].color:"#ddd"}`,color:recPri===p?PRIORITY_CONFIG[p].color:"#666",borderRadius:99,padding:"3px 10px",fontSize:12,fontWeight:500,cursor:"pointer"}}>{p}</button>)}</div>
+                  <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}><span style={{fontSize:11,color:"#999",width:56}}>Repeat</span>{["daily","weekly","monthly"].map(f=><button key={f} onClick={()=>setRecFreq(f)} style={{background:recFreq===f?"#29abac18":"#fff",border:`1px solid ${recFreq===f?"#29abac":"#ddd"}`,color:recFreq===f?"#29abac":"#666",borderRadius:99,padding:"3px 10px",fontSize:12,fontWeight:500,cursor:"pointer",textTransform:"capitalize"}}>{f}</button>)}</div>
+                  {recFreq==="weekly"&&<div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}><span style={{fontSize:11,color:"#999",width:56}}>Day</span>{DAYS.map((d,i)=><button key={d} onClick={()=>setRecDay(i)} style={{background:recDay===i?"#29abac18":"#fff",border:`1px solid ${recDay===i?"#29abac":"#ddd"}`,color:recDay===i?"#29abac":"#666",borderRadius:99,padding:"3px 10px",fontSize:12,fontWeight:500,cursor:"pointer"}}>{d.slice(0,3)}</button>)}</div>}
+                  {recFreq==="monthly"&&<div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:11,color:"#999",width:56}}>Date</span><input type="number" min="1" max="28" value={recDom} onChange={e=>setRecDom(Number(e.target.value))} style={{width:48,background:"#fff",border:"1px solid #ddd",borderRadius:6,padding:"2px 6px",fontSize:12,outline:"none"}}/></div>}
+                  <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:11,color:"#999",width:56}}>Due in</span><input type="number" min="1" max="30" value={recDueDays} onChange={e=>setRecDueDays(e.target.value)} placeholder="days" style={{width:48,background:"#fff",border:"1px solid #ddd",borderRadius:6,padding:"2px 6px",fontSize:12,outline:"none"}}/><span style={{fontSize:11,color:"#999"}}>days after it appears</span>{recDueDays&&<button onClick={()=>setRecDueDays("")} style={{background:"transparent",border:"none",color:"#bbb",fontSize:13,cursor:"pointer",padding:0}}>×</button>}</div>
+                </div>
+              </div>
+              <div style={{padding:"12px 20px"}}>
+                {recTasks.length===0&&<div style={{textAlign:"center",color:"#bbb",marginTop:40,fontSize:14}}>No recurring tasks yet.<br/><span style={{fontSize:12}}>Add one above and it'll appear in Tasks automatically.</span></div>}
+                {recTasks.map(r=><RecurringRow key={r.id} r={r} onRemove={removeRec} onUpdate={updateRec} onForce={forceRec}/>)}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const root=ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App/>);
+  </script>
+</body>
+</html>
