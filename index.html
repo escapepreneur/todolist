@@ -164,6 +164,9 @@
       );
     }
 
+    const EDGE_FN_URL = 'https://gktcjytkfjynszblxrkd.supabase.co/functions/v1/ask-claude';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdrdGNqeXRrZmp5bnN6Ymx4cmtkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxODc3ODMsImV4cCI6MjA5Mzc2Mzc4M30.PxryowTUoSmD23a2MGSE7NOi1YebuWniqQaB7LbkHUM';
+
     function App() {
       const [tasks,setTasks]=useState([]);
       const [ideas,setIdeas]=useState([]);
@@ -186,8 +189,20 @@
       const [recDay,setRecDay]=useState(1);
       const [recDom,setRecDom]=useState(1);
       const [recDueDays,setRecDueDays]=useState("");
+      const [aiOpen,setAiOpen]=useState(false);
+      const [aiChat,setAiChat]=useState([]);
+      const [aiInput,setAiInput]=useState("");
+      const [aiLoading,setAiLoading]=useState(false);
       const dragId=useRef(null);
       const inputRef=useRef(null);
+      const aiEnd=useRef(null);
+      const aiRef=useRef(null);
+      const tasksRef=useRef(tasks);
+      const ideasRef=useRef(ideas);
+      useEffect(()=>{tasksRef.current=tasks;},[tasks]);
+      useEffect(()=>{ideasRef.current=ideas;},[ideas]);
+      useEffect(()=>{aiEnd.current?.scrollIntoView({behavior:"smooth"});},[aiChat,aiLoading]);
+      useEffect(()=>{if(aiOpen)setTimeout(()=>aiRef.current?.focus(),100);},[aiOpen]);
 
       useEffect(()=>{
         (async()=>{
@@ -266,7 +281,41 @@
       const editText=async(id,text)=>{await db.from('tasks').update({text}).eq('id',id);setTasks(p=>p.map(t=>t.id===id?{...t,text}:t));};
       const editDue=async(id,due)=>{await db.from('tasks').update({due:due||null}).eq('id',id);setTasks(p=>p.map(t=>t.id===id?{...t,due}:t));};
 
-      const dragHandlers={
+      const sendAi=async()=>{
+        const msg=aiInput.trim();if(!msg||aiLoading)return;
+        setAiInput("");
+        const nc=[...aiChat,{role:"user",content:msg}];setAiChat(nc);setAiLoading(true);
+        try{
+          const ct=tasksRef.current; const ci=ideasRef.current;
+          const sys=`You are a friendly task assistant. Keep replies SHORT and warm — 1-2 sentences max.
+Today: ${todayStr()}
+TASKS:\n${ct.length?ct.map(t=>`ID:${t.id}|${t.text}|${t.cat}|${t.priority}|due:${t.due||"none"}|${t.done?"DONE":"active"}`).join("\n"):"none"}
+IDEAS:\n${ci.length?ci.map(i=>`ID:${i.id}|${i.text}`).join("\n"):"none"}
+Categories: Business,Personal,Urgent,Other. Priorities: Urgent,High,Normal. Dates: YYYY-MM-DD.
+Respond ONLY with valid JSON: {"message":"...","actions":[]}
+Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_due|add_idea|delete_idea`;
+          const res=await fetch(EDGE_FN_URL,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${SUPABASE_ANON_KEY}`},body:JSON.stringify({system:sys,messages:nc.map(m=>({role:m.role,content:m.content}))})});
+          const data=await res.json();
+          const raw=(data.content?.[0]?.text||"").trim();
+          let parsed;try{parsed=JSON.parse(raw.replace(/```json|```/g,"").trim());}catch{parsed={message:raw,actions:[]};}
+          if(parsed.actions?.length){
+            for(const a of parsed.actions){
+              if(a.type==="add"){const{data:d}=await db.from('tasks').insert({text:a.text,cat:a.cat||"Business",priority:a.priority||"Normal",due:a.due||null,done:false}).select().single();if(d)setTasks(p=>[mapTask(d),...p]);}
+              else if(a.type==="complete"){await db.from('tasks').update({done:true}).eq('id',a.id);setTasks(p=>p.map(t=>t.id===a.id?{...t,done:true}:t));}
+              else if(a.type==="uncomplete"){await db.from('tasks').update({done:false}).eq('id',a.id);setTasks(p=>p.map(t=>t.id===a.id?{...t,done:false}:t));}
+              else if(a.type==="delete"){await db.from('tasks').delete().eq('id',a.id);setTasks(p=>p.filter(t=>t.id!==a.id));}
+              else if(a.type==="set_priority"){await db.from('tasks').update({priority:a.priority}).eq('id',a.id);setTasks(p=>p.map(t=>t.id===a.id?{...t,priority:a.priority}:t));}
+              else if(a.type==="set_due"){await db.from('tasks').update({due:a.due||null}).eq('id',a.id);setTasks(p=>p.map(t=>t.id===a.id?{...t,due:a.due}:t));}
+              else if(a.type==="edit_text"){await db.from('tasks').update({text:a.text}).eq('id',a.id);setTasks(p=>p.map(t=>t.id===a.id?{...t,text:a.text}:t));}
+              else if(a.type==="add_idea"){const{data:d}=await db.from('ideas').insert({text:a.text}).select().single();if(d)setIdeas(p=>[mapIdea(d),...p]);}
+              else if(a.type==="delete_idea"){await db.from('ideas').delete().eq('id',a.id);setIdeas(p=>p.filter(i=>i.id!==a.id));}
+              else if(a.type==="clear_done"){const ids=tasksRef.current.filter(t=>t.done).map(t=>t.id);if(ids.length){await db.from('tasks').delete().in('id',ids);setTasks(p=>p.filter(t=>!t.done));}}
+            }
+          }
+          setAiChat(p=>[...p,{role:"assistant",content:parsed.message||"Done!"}]);
+        }catch(e){setAiChat(p=>[...p,{role:"assistant",content:"Something went wrong — try again."}]);}
+        setAiLoading(false);
+      };
         start:(e,id)=>{dragId.current=id;e.dataTransfer.effectAllowed="move";},
         over:(e,id)=>{e.preventDefault();setDragOver(id);},
         drop:(e,id)=>{e.preventDefault();const from=dragId.current;if(!from||from===id){dragId.current=null;setDragOver(null);return;}setTasks(prev=>{const a=[...prev];const fi=a.findIndex(t=>t.id===from);const ti=a.findIndex(t=>t.id===id);const[r]=a.splice(fi,1);a.splice(ti,0,r);return a;});dragId.current=null;setDragOver(null);},
@@ -307,7 +356,28 @@
               </div>
             </div>
             {totalDone>0&&<button onClick={e=>{e.stopPropagation();clearDone();}} style={{background:"transparent",border:"1px solid #ddd",color:"#666",borderRadius:8,padding:"6px 12px",fontSize:12,cursor:"pointer"}}>Clear {totalDone} done</button>}
+            {tab==="tasks"&&<button onClick={e=>{e.stopPropagation();setAiOpen(o=>!o);}} style={{background:aiOpen?"#29abac":"#f0fafa",border:"1px solid #29abac44",color:aiOpen?"#fff":"#29abac",borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}><span>✦</span> Ask Claude</button>}
           </div>
+
+          {tab==="tasks"&&aiOpen&&(
+            <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderBottom:"1px solid #e5e5e5",padding:"12px 20px",display:"flex",flexDirection:"column",gap:8}}>
+              <div style={{fontSize:12,color:"#888"}}>Type naturally — e.g. <em>"Add call accountant to Business, High, due Friday"</em> or <em>"Mark the survey task done"</em></div>
+              <div style={{maxHeight:160,overflowY:"auto",display:"flex",flexDirection:"column",gap:8}}>
+                {aiChat.map((m,i)=>(
+                  <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}>
+                    <div style={{background:m.role==="user"?"#29abac18":"#f9fafb",border:`1px solid ${m.role==="user"?"#29abac44":"#e8e8e8"}`,color:"#111",borderRadius:m.role==="user"?"12px 12px 4px 12px":"12px 12px 12px 4px",padding:"8px 12px",maxWidth:"85%",fontSize:13,lineHeight:1.5}}>{m.content}</div>
+                  </div>
+                ))}
+                {aiLoading&&<div style={{display:"flex"}}><div style={{background:"#f9fafb",border:"1px solid #e8e8e8",borderRadius:"12px 12px 12px 4px",padding:"8px 12px",color:"#ccc",fontSize:13}}>...</div></div>}
+                <div ref={aiEnd}/>
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <input ref={aiRef} value={aiInput} onChange={e=>setAiInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendAi()} placeholder="Tell Claude what to do..." style={{flex:1,background:"#f9fafb",border:"1px solid #ddd",borderRadius:8,padding:"9px 13px",color:"#111",fontSize:13,outline:"none"}}/>
+                <button onClick={sendAi} disabled={aiLoading} style={{background:"#29abac",border:"none",color:"#fff",fontWeight:800,borderRadius:8,padding:"0 16px",fontSize:13,cursor:aiLoading?"not-allowed":"pointer",opacity:aiLoading?0.5:1}}>Send</button>
+                <button onClick={()=>setAiOpen(false)} style={{background:"transparent",border:"1px solid #ddd",color:"#999",borderRadius:8,padding:"0 12px",fontSize:12,cursor:"pointer"}}>Close</button>
+              </div>
+            </div>
+          )}
 
           <div style={{display:"flex",borderBottom:"1px solid #e5e5e5",background:"#fff",position:"sticky",top:57,zIndex:40}}>
             {[["tasks","Tasks"],["ideas",`Ideas${ideas.length?` (${ideas.length})`:""}`],["recurring",`Recurring${recTasks.length?` (${recTasks.length})`:""}`]].map(([k,l])=>(
