@@ -4,16 +4,17 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>To Do List</title>
+  <link rel="icon" type="image/png" href="Favicon.png">
+  <link rel="apple-touch-icon" href="Favicon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="To Do">
+  <meta name="application-name" content="To Do">
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-  <link rel="icon" type="image/png" href="Favicon.png">
-  <link rel="apple-touch-icon" href="Favicon.png">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="To Do">
-  <meta name="application-name" content="To Do">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
@@ -28,7 +29,7 @@
 
     const SUPABASE_URL = 'https://gktcjytkfjynszblxrkd.supabase.co';
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdrdGNqeXRrZmp5bnN6Ymx4cmtkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxODc3ODMsImV4cCI6MjA5Mzc2Mzc4M30.PxryowTUoSmD23a2MGSE7NOi1YebuWniqQaB7LbkHUM';
-    const EDGE_URL   = `${SUPABASE_URL}/functions/v1/ask-claude`;
+    const EDGE_URL = `${SUPABASE_URL}/functions/v1/ask-claude`;
     const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
     const CAT_COLORS = { Personal:"#8b5cf6", Business:"#29abac", Urgent:"#ef4444", Other:"#f59e0b" };
@@ -59,6 +60,11 @@
       return false;
     }
 
+    function getDisplayName(email) {
+      const part = email.split('@')[0].split('.')[0].split('+')[0];
+      return part.charAt(0).toUpperCase() + part.slice(1);
+    }
+
     function CatBadge({ cat }) {
       return <span style={{background:CAT_COLORS[cat]+"18",color:CAT_COLORS[cat],border:`1px solid ${CAT_COLORS[cat]}44`,borderRadius:99,fontSize:11,fontWeight:500,padding:"1px 8px",whiteSpace:"nowrap"}}>{cat}</span>;
     }
@@ -76,6 +82,36 @@
           <span style={{width:8,height:8,borderRadius:"50%",background:color,flexShrink:0}}/>
           <span style={{fontSize:11,fontWeight:700,color,textTransform:"uppercase",letterSpacing:0.8}}>{label} ({count})</span>
           <span style={{flex:1,height:1,background:color+"22"}}/>
+        </div>
+      );
+    }
+
+    function LoginScreen() {
+      const [email,setEmail]=useState("");
+      const [password,setPassword]=useState("");
+      const [error,setError]=useState("");
+      const [loading,setLoading]=useState(false);
+      const login=async()=>{
+        if(!email.trim()||!password.trim())return;
+        setLoading(true);setError("");
+        const {error:err}=await db.auth.signInWithPassword({email,password});
+        if(err){setError("Invalid email or password.");setLoading(false);}
+      };
+      return (
+        <div style={{fontFamily:"'Inter',sans-serif",background:"#f5f5f5",minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div style={{background:"#fff",borderRadius:16,padding:"40px 32px",boxShadow:"0 4px 24px rgba(0,0,0,0.08)",maxWidth:360,width:"90%",textAlign:"center"}}>
+            <div style={{fontSize:32,marginBottom:8}}>✦</div>
+            <div style={{fontWeight:800,fontSize:20,color:"#29abac",marginBottom:4}}>To Do List</div>
+            <div style={{fontSize:14,color:"#999",marginBottom:28}}>Sign in to continue</div>
+            <input value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&login()} placeholder="Email address" type="email" autoFocus
+              style={{width:"100%",background:"#f9fafb",border:"1px solid #ddd",borderRadius:8,padding:"10px 14px",fontSize:14,outline:"none",color:"#111",boxSizing:"border-box",marginBottom:10,fontWeight:400}}/>
+            <input value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&login()} placeholder="Password" type="password"
+              style={{width:"100%",background:"#f9fafb",border:"1px solid #ddd",borderRadius:8,padding:"10px 14px",fontSize:14,outline:"none",color:"#111",boxSizing:"border-box",marginBottom:16,fontWeight:400}}/>
+            {error&&<div style={{color:"#ef4444",fontSize:13,marginBottom:12}}>{error}</div>}
+            <button onClick={login} disabled={loading} style={{width:"100%",background:"#29abac",border:"none",color:"#fff",fontWeight:800,borderRadius:8,padding:"11px",fontSize:15,cursor:loading?"not-allowed":"pointer",opacity:loading?0.6:1}}>
+              {loading?"Signing in...":"Sign in"}
+            </button>
+          </div>
         </div>
       );
     }
@@ -170,42 +206,29 @@
       );
     }
 
-    function LoginScreen({ onLogin }) {
-      const [email,setEmail]=useState("");
-      const [password,setPassword]=useState("");
-      const [error,setError]=useState("");
-      const [loading,setLoading]=useState(false);
+    function AppShell() {
+      const [session,setSession]=useState(undefined);
 
-      const login=async()=>{
-        if(!email.trim()||!password.trim())return;
-        setLoading(true);setError("");
-        const {error:err}=await db.auth.signInWithPassword({email,password});
-        if(err){setError("Invalid email or password. Please try again.");setLoading(false);}
-        else onLogin();
-      };
+      useEffect(()=>{
+        db.auth.getSession().then(({data:{session}})=>setSession(session));
+        const {data:{subscription}}=db.auth.onAuthStateChange((_,session)=>setSession(session));
+        return ()=>subscription.unsubscribe();
+      },[]);
 
-      return (
-        <div style={{fontFamily:"'Inter',sans-serif",background:"#f5f5f5",minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <div style={{background:"#fff",borderRadius:16,padding:"40px 32px",boxShadow:"0 4px 24px rgba(0,0,0,0.08)",maxWidth:360,width:"90%",textAlign:"center"}}>
-            <div style={{fontSize:32,marginBottom:8}}>✦</div>
-            <div style={{fontWeight:800,fontSize:20,color:"#29abac",marginBottom:4}}>To Do List</div>
-            <div style={{fontSize:14,color:"#999",marginBottom:28}}>Sign in to continue</div>
-            <input value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&login()} placeholder="Email address" type="email" autoFocus
-              style={{width:"100%",background:"#f9fafb",border:"1px solid #ddd",borderRadius:8,padding:"10px 14px",fontSize:14,outline:"none",color:"#111",boxSizing:"border-box",marginBottom:10,fontWeight:400}}/>
-            <input value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&login()} placeholder="Password" type="password"
-              style={{width:"100%",background:"#f9fafb",border:"1px solid #ddd",borderRadius:8,padding:"10px 14px",fontSize:14,outline:"none",color:"#111",boxSizing:"border-box",marginBottom:16,fontWeight:400}}/>
-            {error&&<div style={{color:"#ef4444",fontSize:13,marginBottom:12}}>{error}</div>}
-            <button onClick={login} disabled={loading} style={{width:"100%",background:"#29abac",border:"none",color:"#fff",fontWeight:800,borderRadius:8,padding:"11px",fontSize:15,cursor:loading?"not-allowed":"pointer",opacity:loading?0.6:1}}>
-              {loading?"Signing in...":"Sign in"}
-            </button>
-          </div>
+      if(session===undefined) return (
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh"}}>
+          <div style={{textAlign:"center"}}><div style={{fontSize:28,color:"#29abac",marginBottom:8}}>✦</div><div style={{color:"#999",fontSize:14}}>Loading...</div></div>
         </div>
       );
+
+      if(!session) return <LoginScreen/>;
+      return <App session={session}/>;
     }
 
-    function App() {
-      const [session,setSession]=useState(null);
-      const [authReady,setAuthReady]=useState(false);
+    function App({ session }) {
+      const uid = session.user.id;
+      const displayName = getDisplayName(session.user.email);
+
       const [tasks,setTasks]=useState([]);
       const [ideas,setIdeas]=useState([]);
       const [recTasks,setRecTasks]=useState([]);
@@ -238,27 +261,14 @@
       const tasksRef=useRef(tasks);
       const ideasRef=useRef(ideas);
 
-      useEffect(()=>{
-        db.auth.getSession().then(({data:{session}})=>{setSession(session);setAuthReady(true);});
-        const {data:{subscription}}=db.auth.onAuthStateChange((_,session)=>setSession(session));
-        return ()=>subscription.unsubscribe();
-      },[]);
-
       useEffect(()=>{tasksRef.current=tasks;},[tasks]);
       useEffect(()=>{ideasRef.current=ideas;},[ideas]);
       useEffect(()=>{aiEnd.current?.scrollIntoView({behavior:"smooth"});},[aiChat,aiLoading]);
       useEffect(()=>{if(aiOpen)setTimeout(()=>aiRef.current?.focus(),100);},[aiOpen]);
 
-      const firstName = session.user.email.split('@')[0].split('.')[0];
-      const displayName = firstName.charAt(0).toUpperCase() + firstName.slice(1);
-
       useEffect(()=>{
-        if(!session) return;
-        if(dataLoaded.current) return;
-        dataLoaded.current = true;
         (async()=>{
           try {
-            const uid=session.user.id;
             const [tr,ir,rr]=await Promise.all([
               db.from('tasks').select('*').eq('user_id',uid).order('created_at',{ascending:false}),
               db.from('ideas').select('*').eq('user_id',uid).order('created_at',{ascending:false}),
@@ -278,60 +288,22 @@
           } catch(e){console.error(e);}
           setLoading(false);
         })();
-      },[session]);
+      },[]);
 
       const calcDue=days=>{if(!days)return null;const d=new Date();d.setDate(d.getDate()+days);return d.toISOString().split("T")[0];};
-
-      const addTask=async()=>{
-        if(!newText.trim())return;
-        const {data}=await db.from('tasks').insert({text:newText.trim(),cat:newCat,priority:newPri,due:newDue||null,done:false,user_id:session.user.id}).select().single();
-        if(data)setTasks(p=>[mapTask(data),...p]);
-        setNewText("");setNewDue("");inputRef.current?.focus();
-      };
-      const addIdea=async()=>{
-        if(!newIdea.trim())return;
-        const {data}=await db.from('ideas').insert({text:newIdea.trim(),user_id:session.user.id}).select().single();
-        if(data)setIdeas(p=>[mapIdea(data),...p]);
-        setNewIdea("");
-      };
-      const addRec=async()=>{
-        if(!recText.trim())return;
-        const {data}=await db.from('recurring_tasks').insert({text:recText.trim(),cat:recCat,priority:recPri,freq:recFreq,day_of_week:recFreq==="weekly"?recDay:null,day_of_month:recFreq==="monthly"?recDom:null,due_days:recDueDays?Number(recDueDays):null,user_id:session.user.id}).select().single();
-        if(data)setRecTasks(p=>[...p,mapRec(data)]);
-        setRecText("");setRecDueDays("");
-      };
-      const removeRec=async(id)=>{await db.from('recurring_tasks').delete().eq('id',id).eq('user_id',session.user.id);setRecTasks(p=>p.filter(r=>r.id!==id));};
-      const updateRec=async(id,ch)=>{
-        await db.from('recurring_tasks').update({text:ch.text,cat:ch.cat,priority:ch.priority,freq:ch.freq,day_of_week:ch.dayOfWeek,day_of_month:ch.dayOfMonth,due_days:ch.dueDays}).eq('id',id);
-        setRecTasks(p=>p.map(r=>r.id===id?{...r,...ch}:r));
-      };
-      const forceRec=async(r)=>{
-        const {data}=await db.from('tasks').insert({text:r.text,cat:r.cat,priority:r.priority,due:calcDue(r.dueDays),done:false,recurring_id:r.id,user_id:session.user.id}).select().single();
-        if(data)setTasks(p=>[mapTask(data),...p]);
-        setTab("tasks");
-      };
-      const promoteIdea=async(idea,cat)=>{
-        const {data}=await db.from('tasks').insert({text:idea.text,cat,priority:"Normal",due:null,done:false,user_id:session.user.id}).select().single();
-        if(data)setTasks(p=>[mapTask(data),...p]);
-        await db.from('ideas').delete().eq('id',idea.id);
-        setIdeas(p=>p.filter(i=>i.id!==idea.id));
-        setPromoId(null);setTab("tasks");
-      };
-      const toggle=async(id)=>{
-        const t=tasks.find(t=>t.id===id);if(!t)return;
-        await db.from('tasks').update({done:!t.done}).eq('id',id);
-        setTasks(p=>p.map(t=>t.id===id?{...t,done:!t.done}:t));
-      };
-      const remove=async(id)=>{await db.from('tasks').delete().eq('id',id).eq('user_id',session.user.id);setTasks(p=>p.filter(t=>t.id!==id));};
-      const clearDone=async()=>{
-        const ids=tasks.filter(t=>t.done).map(t=>t.id);
-        if(!ids.length)return;
-        await db.from('tasks').delete().in('id',ids).eq('user_id',session.user.id);
-        setTasks(p=>p.filter(t=>!t.done));
-      };
-      const setPri=async(id,priority)=>{await db.from('tasks').update({priority}).eq('id',id).eq('user_id',session.user.id);setTasks(p=>p.map(t=>t.id===id?{...t,priority}:t));setPriMenu(null);};
-      const editText=async(id,text)=>{await db.from('tasks').update({text}).eq('id',id).eq('user_id',session.user.id);setTasks(p=>p.map(t=>t.id===id?{...t,text}:t));};
-      const editDue=async(id,due)=>{await db.from('tasks').update({due:due||null}).eq('id',id).eq('user_id',session.user.id);setTasks(p=>p.map(t=>t.id===id?{...t,due}:t));};
+      const addTask=async()=>{if(!newText.trim())return;const{data}=await db.from('tasks').insert({text:newText.trim(),cat:newCat,priority:newPri,due:newDue||null,done:false,user_id:uid}).select().single();if(data)setTasks(p=>[mapTask(data),...p]);setNewText("");setNewDue("");inputRef.current?.focus();};
+      const addIdea=async()=>{if(!newIdea.trim())return;const{data}=await db.from('ideas').insert({text:newIdea.trim(),user_id:uid}).select().single();if(data)setIdeas(p=>[mapIdea(data),...p]);setNewIdea("");};
+      const addRec=async()=>{if(!recText.trim())return;const{data}=await db.from('recurring_tasks').insert({text:recText.trim(),cat:recCat,priority:recPri,freq:recFreq,day_of_week:recFreq==="weekly"?recDay:null,day_of_month:recFreq==="monthly"?recDom:null,due_days:recDueDays?Number(recDueDays):null,user_id:uid}).select().single();if(data)setRecTasks(p=>[...p,mapRec(data)]);setRecText("");setRecDueDays("");};
+      const removeRec=async(id)=>{await db.from('recurring_tasks').delete().eq('id',id).eq('user_id',uid);setRecTasks(p=>p.filter(r=>r.id!==id));};
+      const updateRec=async(id,ch)=>{await db.from('recurring_tasks').update({text:ch.text,cat:ch.cat,priority:ch.priority,freq:ch.freq,day_of_week:ch.dayOfWeek,day_of_month:ch.dayOfMonth,due_days:ch.dueDays}).eq('id',id).eq('user_id',uid);setRecTasks(p=>p.map(r=>r.id===id?{...r,...ch}:r));};
+      const forceRec=async(r)=>{const{data}=await db.from('tasks').insert({text:r.text,cat:r.cat,priority:r.priority,due:calcDue(r.dueDays),done:false,recurring_id:r.id,user_id:uid}).select().single();if(data)setTasks(p=>[mapTask(data),...p]);setTab("tasks");};
+      const promoteIdea=async(idea,cat)=>{const{data}=await db.from('tasks').insert({text:idea.text,cat,priority:"Normal",due:null,done:false,user_id:uid}).select().single();if(data)setTasks(p=>[mapTask(data),...p]);await db.from('ideas').delete().eq('id',idea.id).eq('user_id',uid);setIdeas(p=>p.filter(i=>i.id!==idea.id));setPromoId(null);setTab("tasks");};
+      const toggle=async(id)=>{const t=tasks.find(t=>t.id===id);if(!t)return;await db.from('tasks').update({done:!t.done}).eq('id',id).eq('user_id',uid);setTasks(p=>p.map(t=>t.id===id?{...t,done:!t.done}:t));};
+      const remove=async(id)=>{await db.from('tasks').delete().eq('id',id).eq('user_id',uid);setTasks(p=>p.filter(t=>t.id!==id));};
+      const clearDone=async()=>{const ids=tasks.filter(t=>t.done).map(t=>t.id);if(!ids.length)return;await db.from('tasks').delete().in('id',ids).eq('user_id',uid);setTasks(p=>p.filter(t=>!t.done));};
+      const setPri=async(id,priority)=>{await db.from('tasks').update({priority}).eq('id',id).eq('user_id',uid);setTasks(p=>p.map(t=>t.id===id?{...t,priority}:t));setPriMenu(null);};
+      const editText=async(id,text)=>{await db.from('tasks').update({text}).eq('id',id).eq('user_id',uid);setTasks(p=>p.map(t=>t.id===id?{...t,text}:t));};
+      const editDue=async(id,due)=>{await db.from('tasks').update({due:due||null}).eq('id',id).eq('user_id',uid);setTasks(p=>p.map(t=>t.id===id?{...t,due}:t));};
 
       const dragHandlers={
         start:(e,id)=>{dragId.current=id;e.dataTransfer.effectAllowed="move";},
@@ -342,46 +314,36 @@
 
       const sendAi=async()=>{
         const msg=aiInput.trim();if(!msg||aiLoading)return;
-        setAiInput("");
-        const nc=[...aiChat,{role:"user",content:msg}];
-        setAiChat(nc);setAiLoading(true);
+        setAiInput("");const nc=[...aiChat,{role:"user",content:msg}];setAiChat(nc);setAiLoading(true);
         try{
-          const ct=tasksRef.current; const ci=ideasRef.current;
-          const sys=`You are a friendly task assistant. Keep replies SHORT and warm — 1-2 sentences max.
+          const ct=tasksRef.current;const ci=ideasRef.current;
+          const sys=`You are a friendly task assistant for ${displayName}. Keep replies SHORT and warm — 1-2 sentences max.
 Today: ${todayStr()}
 TASKS:\n${ct.length?ct.map(t=>`ID:${t.id}|${t.text}|${t.cat}|${t.priority}|due:${t.due||"none"}|${t.done?"DONE":"active"}`).join("\n"):"none"}
 IDEAS:\n${ci.length?ci.map(i=>`ID:${i.id}|${i.text}`).join("\n"):"none"}
 Categories: Business,Personal,Urgent,Other. Priorities: Urgent,High,Normal. Dates: YYYY-MM-DD.
 Respond ONLY with valid JSON: {"message":"...","actions":[]}
 Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_due|add_idea|delete_idea`;
-          const res=await fetch(EDGE_URL,{
-            method:"POST",
-            headers:{"Content-Type":"application/json","Authorization":`Bearer ${SUPABASE_KEY}`},
-            body:JSON.stringify({system:sys,messages:nc.map(m=>({role:m.role,content:m.content}))})
-          });
+          const res=await fetch(EDGE_URL,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${SUPABASE_KEY}`},body:JSON.stringify({system:sys,messages:nc.map(m=>({role:m.role,content:m.content}))})});
           const data=await res.json();
           const raw=(data.content?.[0]?.text||"").trim();
-          let parsed;
-          try{parsed=JSON.parse(raw.replace(/```json|```/g,"").trim());}
-          catch{parsed={message:raw,actions:[]};}
+          let parsed;try{parsed=JSON.parse(raw.replace(/```json|```/g,"").trim());}catch{parsed={message:raw,actions:[]};}
           if(parsed.actions?.length){
             for(const a of parsed.actions){
-              if(a.type==="add"){const{data:d}=await db.from('tasks').insert({text:a.text,cat:a.cat||"Business",priority:a.priority||"Normal",due:a.due||null,done:false,user_id:session.user.id}).select().single();if(d)setTasks(p=>[mapTask(d),...p]);}
-              else if(a.type==="complete"){await db.from('tasks').update({done:true}).eq('id',a.id);setTasks(p=>p.map(t=>t.id===a.id?{...t,done:true}:t));}
-              else if(a.type==="uncomplete"){await db.from('tasks').update({done:false}).eq('id',a.id);setTasks(p=>p.map(t=>t.id===a.id?{...t,done:false}:t));}
-              else if(a.type==="delete"){await db.from('tasks').delete().eq('id',a.id);setTasks(p=>p.filter(t=>t.id!==a.id));}
-              else if(a.type==="set_priority"){await db.from('tasks').update({priority:a.priority}).eq('id',a.id);setTasks(p=>p.map(t=>t.id===a.id?{...t,priority:a.priority}:t));}
-              else if(a.type==="set_due"){await db.from('tasks').update({due:a.due||null}).eq('id',a.id);setTasks(p=>p.map(t=>t.id===a.id?{...t,due:a.due}:t));}
-              else if(a.type==="edit_text"){await db.from('tasks').update({text:a.text}).eq('id',a.id);setTasks(p=>p.map(t=>t.id===a.id?{...t,text:a.text}:t));}
-              else if(a.type==="add_idea"){const{data:d}=await db.from('ideas').insert({text:a.text,user_id:session.user.id}).select().single();if(d)setIdeas(p=>[mapIdea(d),...p]);}
-              else if(a.type==="delete_idea"){await db.from('ideas').delete().eq('id',a.id);setIdeas(p=>p.filter(i=>i.id!==a.id));}
-              else if(a.type==="clear_done"){const ids=tasksRef.current.filter(t=>t.done).map(t=>t.id);if(ids.length){await db.from('tasks').delete().in('id',ids).eq('user_id',session.user.id);setTasks(p=>p.filter(t=>!t.done));}}
+              if(a.type==="add"){const{data:d}=await db.from('tasks').insert({text:a.text,cat:a.cat||"Business",priority:a.priority||"Normal",due:a.due||null,done:false,user_id:uid}).select().single();if(d)setTasks(p=>[mapTask(d),...p]);}
+              else if(a.type==="complete"){await db.from('tasks').update({done:true}).eq('id',a.id).eq('user_id',uid);setTasks(p=>p.map(t=>t.id===a.id?{...t,done:true}:t));}
+              else if(a.type==="uncomplete"){await db.from('tasks').update({done:false}).eq('id',a.id).eq('user_id',uid);setTasks(p=>p.map(t=>t.id===a.id?{...t,done:false}:t));}
+              else if(a.type==="delete"){await db.from('tasks').delete().eq('id',a.id).eq('user_id',uid);setTasks(p=>p.filter(t=>t.id!==a.id));}
+              else if(a.type==="set_priority"){await db.from('tasks').update({priority:a.priority}).eq('id',a.id).eq('user_id',uid);setTasks(p=>p.map(t=>t.id===a.id?{...t,priority:a.priority}:t));}
+              else if(a.type==="set_due"){await db.from('tasks').update({due:a.due||null}).eq('id',a.id).eq('user_id',uid);setTasks(p=>p.map(t=>t.id===a.id?{...t,due:a.due}:t));}
+              else if(a.type==="edit_text"){await db.from('tasks').update({text:a.text}).eq('id',a.id).eq('user_id',uid);setTasks(p=>p.map(t=>t.id===a.id?{...t,text:a.text}:t));}
+              else if(a.type==="add_idea"){const{data:d}=await db.from('ideas').insert({text:a.text,user_id:uid}).select().single();if(d)setIdeas(p=>[mapIdea(d),...p]);}
+              else if(a.type==="delete_idea"){await db.from('ideas').delete().eq('id',a.id).eq('user_id',uid);setIdeas(p=>p.filter(i=>i.id!==a.id));}
+              else if(a.type==="clear_done"){const ids=tasksRef.current.filter(t=>t.done).map(t=>t.id);if(ids.length){await db.from('tasks').delete().in('id',ids).eq('user_id',uid);setTasks(p=>p.filter(t=>!t.done));}}
             }
           }
           setAiChat(p=>[...p,{role:"assistant",content:parsed.message||"Done!"}]);
-        }catch(e){
-          setAiChat(p=>[...p,{role:"assistant",content:"Something went wrong — try again."}]);
-        }
+        }catch(e){setAiChat(p=>[...p,{role:"assistant",content:"Something went wrong — try again."}]);}
         setAiLoading(false);
       };
 
@@ -399,13 +361,6 @@ Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_du
       const overdueCount=tasks.filter(t=>!t.done&&isOverdue(t.due)).length;
       const trp={onToggle:toggle,onRemove:remove,onSetPriority:setPri,onEditText:editText,onEditDue:editDue,priorityMenu:priMenu,setPriorityMenu:setPriMenu,dragHandlers};
 
-      if(!authReady) return (
-        <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh"}}>
-          <div style={{textAlign:"center"}}><div style={{fontSize:28,color:"#29abac",marginBottom:8}}>✦</div><div style={{color:"#999",fontSize:14}}>Loading...</div></div>
-        </div>
-      );
-      if(!session) return <LoginScreen onLogin={()=>{}}/>;
-
       if(loading) return (
         <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh"}}>
           <div style={{textAlign:"center"}}><div style={{fontSize:28,color:"#29abac",marginBottom:8}}>✦</div><div style={{color:"#999",fontSize:14}}>Loading your tasks...</div></div>
@@ -415,7 +370,6 @@ Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_du
       return (
         <div style={{fontFamily:"'Inter',sans-serif",background:"#f5f5f5",minHeight:"100vh",color:"#111",display:"flex",flexDirection:"column",maxWidth:780,margin:"0 auto"}} onClick={()=>{setPriMenu(null);setPromoId(null);}}>
 
-          {/* Header */}
           <div style={{background:"#fff",borderBottom:"1px solid #e5e5e5",padding:"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:40}}>
             <div>
               <div style={{fontWeight:800,fontSize:18,color:"#29abac",letterSpacing:-0.5}}>{displayName}'s To Do List</div>
@@ -427,16 +381,15 @@ Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_du
               </div>
             </div>
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
-              {totalDone>0&&<button onClick={e=>{e.stopPropagation();clearDone();}} style={{background:"transparent",border:"1px solid #ddd",color:"#666",borderRadius:8,padding:"6px 12px",fontSize:12,cursor:"pointer"}}>Clear {totalDone} done</button>}
+              {totalDone>0&&<button onClick={e=>{e.stopPropagation();clearDone();}} style={{background:"transparent",border:"1px solid #ddd",color:"#666",borderRadius:8,padding:"6px 12px",fontSize:12,cursor:"pointer"}}>Clear done</button>}
               {tab==="tasks"&&<button onClick={e=>{e.stopPropagation();setAiOpen(o=>!o);}} style={{background:aiOpen?"#29abac":"#f0fafa",border:"1px solid #29abac44",color:aiOpen?"#fff":"#29abac",borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}><span>✦</span> Ask Claude</button>}
-              <button onClick={()=>{ db.auth.signOut().then(()=>window.location.reload()); }} style={{background:"transparent",border:"1px solid #ddd",color:"#999",borderRadius:8,padding:"6px 12px",fontSize:12,cursor:"pointer"}}>Sign out</button>
+              <button onClick={()=>{db.auth.signOut().then(()=>window.location.reload());}} style={{background:"transparent",border:"1px solid #ddd",color:"#999",borderRadius:8,padding:"6px 12px",fontSize:12,cursor:"pointer"}}>Sign out</button>
             </div>
           </div>
 
-          {/* Ask Claude panel */}
           {tab==="tasks"&&aiOpen&&(
             <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderBottom:"1px solid #e5e5e5",padding:"12px 20px",display:"flex",flexDirection:"column",gap:8}}>
-              <div style={{fontSize:12,color:"#888"}}>Type naturally — e.g. <em>"Add call accountant to Business, High, due Friday"</em> or <em>"Mark the survey task done"</em></div>
+              <div style={{fontSize:12,color:"#888"}}>Type naturally — e.g. <em>"Add call accountant to Business, High, due Friday"</em></div>
               <div style={{maxHeight:160,overflowY:"auto",display:"flex",flexDirection:"column",gap:8}}>
                 {aiChat.map((m,i)=>(
                   <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}>
@@ -454,14 +407,12 @@ Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_du
             </div>
           )}
 
-          {/* Tabs */}
           <div style={{display:"flex",borderBottom:"1px solid #e5e5e5",background:"#fff",position:"sticky",top:57,zIndex:40}}>
             {[["tasks","Tasks"],["ideas",`Ideas${ideas.length?` (${ideas.length})`:""}`],["recurring",`Recurring${recTasks.length?` (${recTasks.length})`:""}`]].map(([k,l])=>(
               <button key={k} onClick={()=>setTab(k)} style={{flex:1,padding:"10px",border:"none",background:"transparent",color:tab===k?"#29abac":"#666",fontWeight:700,fontSize:13,borderBottom:tab===k?"2px solid #29abac":"2px solid transparent",cursor:"pointer"}}>{l}</button>
             ))}
           </div>
 
-          {/* Tasks tab */}
           {tab==="tasks"&&(
             <div style={{flex:1}}>
               <div style={{padding:"14px 20px",borderBottom:"1px solid #ebebeb",background:"#fafafa"}}>
@@ -509,7 +460,6 @@ Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_du
             </div>
           )}
 
-          {/* Ideas tab */}
           {tab==="ideas"&&(
             <div style={{flex:1}}>
               <div style={{padding:"14px 20px",borderBottom:"1px solid #ebebeb",background:"#fafafa"}}>
@@ -534,14 +484,13 @@ Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_du
                     ):(
                       <button onClick={e=>{e.stopPropagation();setPromoId(idea.id);}} style={{background:"#f0fafa",border:"1px solid #29abac44",color:"#29abac",borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>Make task</button>
                     )}
-                    <button onClick={async()=>{await db.from('ideas').delete().eq('id',idea.id).eq('user_id',session.user.id);setIdeas(p=>p.filter(i=>i.id!==idea.id));}} style={{background:"transparent",border:"none",color:"#ccc",cursor:"pointer",fontSize:18,padding:0,lineHeight:1}}>×</button>
+                    <button onClick={async()=>{await db.from('ideas').delete().eq('id',idea.id).eq('user_id',uid);setIdeas(p=>p.filter(i=>i.id!==idea.id));}} style={{background:"transparent",border:"none",color:"#ccc",cursor:"pointer",fontSize:18,padding:0,lineHeight:1}}>×</button>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Recurring tab */}
           {tab==="recurring"&&(
             <div style={{flex:1}}>
               <div style={{padding:"14px 20px",borderBottom:"1px solid #ebebeb",background:"#fafafa"}}>
@@ -560,7 +509,7 @@ Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_du
                 </div>
               </div>
               <div style={{padding:"12px 20px"}}>
-                {recTasks.length===0&&<div style={{textAlign:"center",color:"#bbb",marginTop:40,fontSize:14}}>No recurring tasks yet.<br/><span style={{fontSize:12}}>Add one above and it'll appear in Tasks automatically.</span></div>}
+                {recTasks.length===0&&<div style={{textAlign:"center",color:"#bbb",marginTop:40,fontSize:14}}>No recurring tasks yet.</div>}
                 {recTasks.map(r=><RecurringRow key={r.id} r={r} onRemove={removeRec} onUpdate={updateRec} onForce={forceRec}/>)}
               </div>
             </div>
@@ -570,7 +519,7 @@ Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_du
     }
 
     const root=ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<App/>);
+    root.render(<AppShell/>);
   </script>
 </body>
 </html>
