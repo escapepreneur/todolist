@@ -249,7 +249,8 @@
       useEffect(()=>{aiEnd.current?.scrollIntoView({behavior:"smooth"});},[aiChat,aiLoading]);
       useEffect(()=>{if(aiOpen)setTimeout(()=>aiRef.current?.focus(),100);},[aiOpen]);
 
-      const dataLoaded = useRef(false);
+      const firstName = session.user.email.split('@')[0].split('.')[0];
+      const displayName = firstName.charAt(0).toUpperCase() + firstName.slice(1);
 
       useEffect(()=>{
         if(!session) return;
@@ -417,7 +418,7 @@ Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_du
           {/* Header */}
           <div style={{background:"#fff",borderBottom:"1px solid #e5e5e5",padding:"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:40}}>
             <div>
-              <div style={{fontWeight:800,fontSize:18,color:"#29abac",letterSpacing:-0.5}}>To Do List</div>
+              <div style={{fontWeight:800,fontSize:18,color:"#29abac",letterSpacing:-0.5}}>{displayName}'s To Do List</div>
               <div style={{fontSize:12,color:"#666",marginTop:2}}>
                 {tasks.filter(t=>!t.done).length} active
                 {urgentCount>0&&<span style={{color:"#ef4444",fontWeight:700}}> &bull; {urgentCount} urgent</span>}
