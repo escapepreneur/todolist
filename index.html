@@ -294,7 +294,7 @@
         if(data)setRecTasks(p=>[...p,mapRec(data)]);
         setRecText("");setRecDueDays("");
       };
-      const removeRec=async(id)=>{await db.from('recurring_tasks').delete().eq('id',id);setRecTasks(p=>p.filter(r=>r.id!==id));};
+      const removeRec=async(id)=>{await db.from('recurring_tasks').delete().eq('id',id).eq('user_id',session.user.id);setRecTasks(p=>p.filter(r=>r.id!==id));};
       const updateRec=async(id,ch)=>{
         await db.from('recurring_tasks').update({text:ch.text,cat:ch.cat,priority:ch.priority,freq:ch.freq,day_of_week:ch.dayOfWeek,day_of_month:ch.dayOfMonth,due_days:ch.dueDays}).eq('id',id);
         setRecTasks(p=>p.map(r=>r.id===id?{...r,...ch}:r));
@@ -316,16 +316,16 @@
         await db.from('tasks').update({done:!t.done}).eq('id',id);
         setTasks(p=>p.map(t=>t.id===id?{...t,done:!t.done}:t));
       };
-      const remove=async(id)=>{await db.from('tasks').delete().eq('id',id);setTasks(p=>p.filter(t=>t.id!==id));};
+      const remove=async(id)=>{await db.from('tasks').delete().eq('id',id).eq('user_id',session.user.id);setTasks(p=>p.filter(t=>t.id!==id));};
       const clearDone=async()=>{
         const ids=tasks.filter(t=>t.done).map(t=>t.id);
         if(!ids.length)return;
-        await db.from('tasks').delete().in('id',ids);
+        await db.from('tasks').delete().in('id',ids).eq('user_id',session.user.id);
         setTasks(p=>p.filter(t=>!t.done));
       };
-      const setPri=async(id,priority)=>{await db.from('tasks').update({priority}).eq('id',id);setTasks(p=>p.map(t=>t.id===id?{...t,priority}:t));setPriMenu(null);};
-      const editText=async(id,text)=>{await db.from('tasks').update({text}).eq('id',id);setTasks(p=>p.map(t=>t.id===id?{...t,text}:t));};
-      const editDue=async(id,due)=>{await db.from('tasks').update({due:due||null}).eq('id',id);setTasks(p=>p.map(t=>t.id===id?{...t,due}:t));};
+      const setPri=async(id,priority)=>{await db.from('tasks').update({priority}).eq('id',id).eq('user_id',session.user.id);setTasks(p=>p.map(t=>t.id===id?{...t,priority}:t));setPriMenu(null);};
+      const editText=async(id,text)=>{await db.from('tasks').update({text}).eq('id',id).eq('user_id',session.user.id);setTasks(p=>p.map(t=>t.id===id?{...t,text}:t));};
+      const editDue=async(id,due)=>{await db.from('tasks').update({due:due||null}).eq('id',id).eq('user_id',session.user.id);setTasks(p=>p.map(t=>t.id===id?{...t,due}:t));};
 
       const dragHandlers={
         start:(e,id)=>{dragId.current=id;e.dataTransfer.effectAllowed="move";},
@@ -369,7 +369,7 @@ Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_du
               else if(a.type==="edit_text"){await db.from('tasks').update({text:a.text}).eq('id',a.id);setTasks(p=>p.map(t=>t.id===a.id?{...t,text:a.text}:t));}
               else if(a.type==="add_idea"){const{data:d}=await db.from('ideas').insert({text:a.text,user_id:session.user.id}).select().single();if(d)setIdeas(p=>[mapIdea(d),...p]);}
               else if(a.type==="delete_idea"){await db.from('ideas').delete().eq('id',a.id);setIdeas(p=>p.filter(i=>i.id!==a.id));}
-              else if(a.type==="clear_done"){const ids=tasksRef.current.filter(t=>t.done).map(t=>t.id);if(ids.length){await db.from('tasks').delete().in('id',ids);setTasks(p=>p.filter(t=>!t.done));}}
+              else if(a.type==="clear_done"){const ids=tasksRef.current.filter(t=>t.done).map(t=>t.id);if(ids.length){await db.from('tasks').delete().in('id',ids).eq('user_id',session.user.id);setTasks(p=>p.filter(t=>!t.done));}}
             }
           }
           setAiChat(p=>[...p,{role:"assistant",content:parsed.message||"Done!"}]);
@@ -528,7 +528,7 @@ Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_du
                     ):(
                       <button onClick={e=>{e.stopPropagation();setPromoId(idea.id);}} style={{background:"#f0fafa",border:"1px solid #29abac44",color:"#29abac",borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>Make task</button>
                     )}
-                    <button onClick={async()=>{await db.from('ideas').delete().eq('id',idea.id);setIdeas(p=>p.filter(i=>i.id!==idea.id));}} style={{background:"transparent",border:"none",color:"#ccc",cursor:"pointer",fontSize:18,padding:0,lineHeight:1}}>×</button>
+                    <button onClick={async()=>{await db.from('ideas').delete().eq('id',idea.id).eq('user_id',session.user.id);setIdeas(p=>p.filter(i=>i.id!==idea.id));}} style={{background:"transparent",border:"none",color:"#ccc",cursor:"pointer",fontSize:18,padding:0,lineHeight:1}}>×</button>
                   </div>
                 ))}
               </div>
