@@ -164,7 +164,42 @@
       );
     }
 
+    function LoginScreen({ onLogin }) {
+      const [email,setEmail]=useState("");
+      const [password,setPassword]=useState("");
+      const [error,setError]=useState("");
+      const [loading,setLoading]=useState(false);
+
+      const login=async()=>{
+        if(!email.trim()||!password.trim())return;
+        setLoading(true);setError("");
+        const {error:err}=await db.auth.signInWithPassword({email,password});
+        if(err){setError("Invalid email or password. Please try again.");setLoading(false);}
+        else onLogin();
+      };
+
+      return (
+        <div style={{fontFamily:"'Inter',sans-serif",background:"#f5f5f5",minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div style={{background:"#fff",borderRadius:16,padding:"40px 32px",boxShadow:"0 4px 24px rgba(0,0,0,0.08)",maxWidth:360,width:"90%",textAlign:"center"}}>
+            <div style={{fontSize:32,marginBottom:8}}>✦</div>
+            <div style={{fontWeight:800,fontSize:20,color:"#29abac",marginBottom:4}}>Karen's Task List</div>
+            <div style={{fontSize:14,color:"#999",marginBottom:28}}>Sign in to continue</div>
+            <input value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&login()} placeholder="Email address" type="email" autoFocus
+              style={{width:"100%",background:"#f9fafb",border:"1px solid #ddd",borderRadius:8,padding:"10px 14px",fontSize:14,outline:"none",color:"#111",boxSizing:"border-box",marginBottom:10,fontWeight:400}}/>
+            <input value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&login()} placeholder="Password" type="password"
+              style={{width:"100%",background:"#f9fafb",border:"1px solid #ddd",borderRadius:8,padding:"10px 14px",fontSize:14,outline:"none",color:"#111",boxSizing:"border-box",marginBottom:16,fontWeight:400}}/>
+            {error&&<div style={{color:"#ef4444",fontSize:13,marginBottom:12}}>{error}</div>}
+            <button onClick={login} disabled={loading} style={{width:"100%",background:"#29abac",border:"none",color:"#fff",fontWeight:800,borderRadius:8,padding:"11px",fontSize:15,cursor:loading?"not-allowed":"pointer",opacity:loading?0.6:1}}>
+              {loading?"Signing in...":"Sign in"}
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     function App() {
+      const [session,setSession]=useState(null);
+      const [authReady,setAuthReady]=useState(false);
       const [tasks,setTasks]=useState([]);
       const [ideas,setIdeas]=useState([]);
       const [recTasks,setRecTasks]=useState([]);
@@ -196,6 +231,12 @@
       const aiRef=useRef(null);
       const tasksRef=useRef(tasks);
       const ideasRef=useRef(ideas);
+
+      useEffect(()=>{
+        db.auth.getSession().then(({data:{session}})=>{setSession(session);setAuthReady(true);});
+        const {data:{subscription}}=db.auth.onAuthStateChange((_,session)=>setSession(session));
+        return ()=>subscription.unsubscribe();
+      },[]);
 
       useEffect(()=>{tasksRef.current=tasks;},[tasks]);
       useEffect(()=>{ideasRef.current=ideas;},[ideas]);
@@ -345,6 +386,13 @@ Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_du
       const overdueCount=tasks.filter(t=>!t.done&&isOverdue(t.due)).length;
       const trp={onToggle:toggle,onRemove:remove,onSetPriority:setPri,onEditText:editText,onEditDue:editDue,priorityMenu:priMenu,setPriorityMenu:setPriMenu,dragHandlers};
 
+      if(!authReady) return (
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh"}}>
+          <div style={{textAlign:"center"}}><div style={{fontSize:28,color:"#29abac",marginBottom:8}}>✦</div><div style={{color:"#999",fontSize:14}}>Loading...</div></div>
+        </div>
+      );
+      if(!session) return <LoginScreen onLogin={()=>{}}/>;
+
       if(loading) return (
         <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh"}}>
           <div style={{textAlign:"center"}}><div style={{fontSize:28,color:"#29abac",marginBottom:8}}>✦</div><div style={{color:"#999",fontSize:14}}>Loading your tasks...</div></div>
@@ -368,6 +416,7 @@ Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_du
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
               {totalDone>0&&<button onClick={e=>{e.stopPropagation();clearDone();}} style={{background:"transparent",border:"1px solid #ddd",color:"#666",borderRadius:8,padding:"6px 12px",fontSize:12,cursor:"pointer"}}>Clear {totalDone} done</button>}
               {tab==="tasks"&&<button onClick={e=>{e.stopPropagation();setAiOpen(o=>!o);}} style={{background:aiOpen?"#29abac":"#f0fafa",border:"1px solid #29abac44",color:aiOpen?"#fff":"#29abac",borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}><span>✦</span> Ask Claude</button>}
+              <button onClick={()=>db.auth.signOut()} style={{background:"transparent",border:"1px solid #ddd",color:"#999",borderRadius:8,padding:"6px 12px",fontSize:12,cursor:"pointer"}}>Sign out</button>
             </div>
           </div>
 
