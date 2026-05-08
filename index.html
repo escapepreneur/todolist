@@ -250,6 +250,7 @@
       useEffect(()=>{if(aiOpen)setTimeout(()=>aiRef.current?.focus(),100);},[aiOpen]);
 
       useEffect(()=>{
+        if(!session) return;
         (async()=>{
           try {
             const uid=session.user.id;
@@ -272,7 +273,7 @@
           } catch(e){console.error(e);}
           setLoading(false);
         })();
-      },[]);
+      },[session]);
 
       const calcDue=days=>{if(!days)return null;const d=new Date();d.setDate(d.getDate()+days);return d.toISOString().split("T")[0];};
 
