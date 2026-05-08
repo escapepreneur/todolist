@@ -428,7 +428,7 @@ Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_du
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
               {totalDone>0&&<button onClick={e=>{e.stopPropagation();clearDone();}} style={{background:"transparent",border:"1px solid #ddd",color:"#666",borderRadius:8,padding:"6px 12px",fontSize:12,cursor:"pointer"}}>Clear {totalDone} done</button>}
               {tab==="tasks"&&<button onClick={e=>{e.stopPropagation();setAiOpen(o=>!o);}} style={{background:aiOpen?"#29abac":"#f0fafa",border:"1px solid #29abac44",color:aiOpen?"#fff":"#29abac",borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}><span>✦</span> Ask Claude</button>}
-              <button onClick={()=>db.auth.signOut()} style={{background:"transparent",border:"1px solid #ddd",color:"#999",borderRadius:8,padding:"6px 12px",fontSize:12,cursor:"pointer"}}>Sign out</button>
+              <button onClick={()=>{ db.auth.signOut().then(()=>window.location.reload()); }} style={{background:"transparent",border:"1px solid #ddd",color:"#999",borderRadius:8,padding:"6px 12px",fontSize:12,cursor:"pointer"}}>Sign out</button>
             </div>
           </div>
 
