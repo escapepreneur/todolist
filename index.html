@@ -3,11 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Karen's Task List</title>
+  <title>To Do List</title>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <link rel="icon" type="image/png" href="Favicon.png">
+  <link rel="apple-touch-icon" href="Favicon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="To Do">
+  <meta name="application-name" content="To Do">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
@@ -182,7 +188,7 @@
         <div style={{fontFamily:"'Inter',sans-serif",background:"#f5f5f5",minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}>
           <div style={{background:"#fff",borderRadius:16,padding:"40px 32px",boxShadow:"0 4px 24px rgba(0,0,0,0.08)",maxWidth:360,width:"90%",textAlign:"center"}}>
             <div style={{fontSize:32,marginBottom:8}}>✦</div>
-            <div style={{fontWeight:800,fontSize:20,color:"#29abac",marginBottom:4}}>Karen's Task List</div>
+            <div style={{fontWeight:800,fontSize:20,color:"#29abac",marginBottom:4}}>To Do List</div>
             <div style={{fontSize:14,color:"#999",marginBottom:28}}>Sign in to continue</div>
             <input value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&login()} placeholder="Email address" type="email" autoFocus
               style={{width:"100%",background:"#f9fafb",border:"1px solid #ddd",borderRadius:8,padding:"10px 14px",fontSize:14,outline:"none",color:"#111",boxSizing:"border-box",marginBottom:10,fontWeight:400}}/>
@@ -246,10 +252,11 @@
       useEffect(()=>{
         (async()=>{
           try {
+            const uid=session.user.id;
             const [tr,ir,rr]=await Promise.all([
-              db.from('tasks').select('*').order('created_at',{ascending:false}),
-              db.from('ideas').select('*').order('created_at',{ascending:false}),
-              db.from('recurring_tasks').select('*').order('created_at',{ascending:true})
+              db.from('tasks').select('*').eq('user_id',uid).order('created_at',{ascending:false}),
+              db.from('ideas').select('*').eq('user_id',uid).order('created_at',{ascending:false}),
+              db.from('recurring_tasks').select('*').eq('user_id',uid).order('created_at',{ascending:true})
             ]);
             const lt=(tr.data||[]).map(mapTask);
             const li=(ir.data||[]).map(mapIdea);
@@ -258,7 +265,7 @@
             const calcD=days=>{if(!days)return null;const d=new Date();d.setDate(d.getDate()+days);return d.toISOString().split("T")[0];};
             const toFire=lr.filter(r=>shouldFire(r,lt));
             if(toFire.length>0){
-              const rows=toFire.map(r=>({text:r.text,cat:r.cat,priority:r.priority,due:calcD(r.dueDays),done:false,recurring_id:r.id}));
+              const rows=toFire.map(r=>({text:r.text,cat:r.cat,priority:r.priority,due:calcD(r.dueDays),done:false,recurring_id:r.id,user_id:uid}));
               const {data:ins}=await db.from('tasks').insert(rows).select();
               if(ins) setTasks(p=>[...ins.map(mapTask),...p]);
             }
@@ -271,19 +278,19 @@
 
       const addTask=async()=>{
         if(!newText.trim())return;
-        const {data}=await db.from('tasks').insert({text:newText.trim(),cat:newCat,priority:newPri,due:newDue||null,done:false}).select().single();
+        const {data}=await db.from('tasks').insert({text:newText.trim(),cat:newCat,priority:newPri,due:newDue||null,done:false,user_id:session.user.id}).select().single();
         if(data)setTasks(p=>[mapTask(data),...p]);
         setNewText("");setNewDue("");inputRef.current?.focus();
       };
       const addIdea=async()=>{
         if(!newIdea.trim())return;
-        const {data}=await db.from('ideas').insert({text:newIdea.trim()}).select().single();
+        const {data}=await db.from('ideas').insert({text:newIdea.trim(),user_id:session.user.id}).select().single();
         if(data)setIdeas(p=>[mapIdea(data),...p]);
         setNewIdea("");
       };
       const addRec=async()=>{
         if(!recText.trim())return;
-        const {data}=await db.from('recurring_tasks').insert({text:recText.trim(),cat:recCat,priority:recPri,freq:recFreq,day_of_week:recFreq==="weekly"?recDay:null,day_of_month:recFreq==="monthly"?recDom:null,due_days:recDueDays?Number(recDueDays):null}).select().single();
+        const {data}=await db.from('recurring_tasks').insert({text:recText.trim(),cat:recCat,priority:recPri,freq:recFreq,day_of_week:recFreq==="weekly"?recDay:null,day_of_month:recFreq==="monthly"?recDom:null,due_days:recDueDays?Number(recDueDays):null,user_id:session.user.id}).select().single();
         if(data)setRecTasks(p=>[...p,mapRec(data)]);
         setRecText("");setRecDueDays("");
       };
@@ -293,12 +300,12 @@
         setRecTasks(p=>p.map(r=>r.id===id?{...r,...ch}:r));
       };
       const forceRec=async(r)=>{
-        const {data}=await db.from('tasks').insert({text:r.text,cat:r.cat,priority:r.priority,due:calcDue(r.dueDays),done:false,recurring_id:r.id}).select().single();
+        const {data}=await db.from('tasks').insert({text:r.text,cat:r.cat,priority:r.priority,due:calcDue(r.dueDays),done:false,recurring_id:r.id,user_id:session.user.id}).select().single();
         if(data)setTasks(p=>[mapTask(data),...p]);
         setTab("tasks");
       };
       const promoteIdea=async(idea,cat)=>{
-        const {data}=await db.from('tasks').insert({text:idea.text,cat,priority:"Normal",due:null,done:false}).select().single();
+        const {data}=await db.from('tasks').insert({text:idea.text,cat,priority:"Normal",due:null,done:false,user_id:session.user.id}).select().single();
         if(data)setTasks(p=>[mapTask(data),...p]);
         await db.from('ideas').delete().eq('id',idea.id);
         setIdeas(p=>p.filter(i=>i.id!==idea.id));
@@ -353,14 +360,14 @@ Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_du
           catch{parsed={message:raw,actions:[]};}
           if(parsed.actions?.length){
             for(const a of parsed.actions){
-              if(a.type==="add"){const{data:d}=await db.from('tasks').insert({text:a.text,cat:a.cat||"Business",priority:a.priority||"Normal",due:a.due||null,done:false}).select().single();if(d)setTasks(p=>[mapTask(d),...p]);}
+              if(a.type==="add"){const{data:d}=await db.from('tasks').insert({text:a.text,cat:a.cat||"Business",priority:a.priority||"Normal",due:a.due||null,done:false,user_id:session.user.id}).select().single();if(d)setTasks(p=>[mapTask(d),...p]);}
               else if(a.type==="complete"){await db.from('tasks').update({done:true}).eq('id',a.id);setTasks(p=>p.map(t=>t.id===a.id?{...t,done:true}:t));}
               else if(a.type==="uncomplete"){await db.from('tasks').update({done:false}).eq('id',a.id);setTasks(p=>p.map(t=>t.id===a.id?{...t,done:false}:t));}
               else if(a.type==="delete"){await db.from('tasks').delete().eq('id',a.id);setTasks(p=>p.filter(t=>t.id!==a.id));}
               else if(a.type==="set_priority"){await db.from('tasks').update({priority:a.priority}).eq('id',a.id);setTasks(p=>p.map(t=>t.id===a.id?{...t,priority:a.priority}:t));}
               else if(a.type==="set_due"){await db.from('tasks').update({due:a.due||null}).eq('id',a.id);setTasks(p=>p.map(t=>t.id===a.id?{...t,due:a.due}:t));}
               else if(a.type==="edit_text"){await db.from('tasks').update({text:a.text}).eq('id',a.id);setTasks(p=>p.map(t=>t.id===a.id?{...t,text:a.text}:t));}
-              else if(a.type==="add_idea"){const{data:d}=await db.from('ideas').insert({text:a.text}).select().single();if(d)setIdeas(p=>[mapIdea(d),...p]);}
+              else if(a.type==="add_idea"){const{data:d}=await db.from('ideas').insert({text:a.text,user_id:session.user.id}).select().single();if(d)setIdeas(p=>[mapIdea(d),...p]);}
               else if(a.type==="delete_idea"){await db.from('ideas').delete().eq('id',a.id);setIdeas(p=>p.filter(i=>i.id!==a.id));}
               else if(a.type==="clear_done"){const ids=tasksRef.current.filter(t=>t.done).map(t=>t.id);if(ids.length){await db.from('tasks').delete().in('id',ids);setTasks(p=>p.filter(t=>!t.done));}}
             }
@@ -405,7 +412,7 @@ Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_du
           {/* Header */}
           <div style={{background:"#fff",borderBottom:"1px solid #e5e5e5",padding:"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:40}}>
             <div>
-              <div style={{fontWeight:800,fontSize:18,color:"#29abac",letterSpacing:-0.5}}>Karen's Task List</div>
+              <div style={{fontWeight:800,fontSize:18,color:"#29abac",letterSpacing:-0.5}}>To Do List</div>
               <div style={{fontSize:12,color:"#666",marginTop:2}}>
                 {tasks.filter(t=>!t.done).length} active
                 {urgentCount>0&&<span style={{color:"#ef4444",fontWeight:700}}> &bull; {urgentCount} urgent</span>}
