@@ -249,8 +249,12 @@
       useEffect(()=>{aiEnd.current?.scrollIntoView({behavior:"smooth"});},[aiChat,aiLoading]);
       useEffect(()=>{if(aiOpen)setTimeout(()=>aiRef.current?.focus(),100);},[aiOpen]);
 
+      const dataLoaded = useRef(false);
+
       useEffect(()=>{
         if(!session) return;
+        if(dataLoaded.current) return;
+        dataLoaded.current = true;
         (async()=>{
           try {
             const uid=session.user.id;
