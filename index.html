@@ -116,145 +116,7 @@
       );
     }
 
-    function CoachTab({ tasks, ideas, displayName, uid }) {
-      const [messages, setMessages] = useState([]);
-      const [input, setInput] = useState("");
-      const [loading, setLoading] = useState(false);
-      const [mode, setMode] = useState(null); // 'morning' | 'focus' | 'eod'
-      const chatEnd = useRef(null);
-      const inputRef = useRef(null);
-
-      useEffect(()=>{ chatEnd.current?.scrollIntoView({behavior:"smooth"}); },[messages,loading]);
-
-      const urgentTasks = tasks.filter(t=>!t.done&&t.priority==="Urgent");
-      const overdueTasks = tasks.filter(t=>!t.done&&isOverdue(t.due));
-      const doneTodayTasks = tasks.filter(t=>t.done);
-      const activeTasks = tasks.filter(t=>!t.done);
-
-      const systemPrompt = (currentMode) => `You are Coach -- a warm, witty, no-nonsense productivity coach for ${displayName}. You know their full task list and you use it. You celebrate wins genuinely, call out avoidance without being preachy, and keep things moving. You're like that friend who actually tells you the truth but does it with warmth. A little humour is good -- just never corny. Keep responses conversational and fairly short -- this is a chat, not an essay.
-
-Today: ${todayStr()}
-${displayName}'s task list:
-URGENT (${urgentTasks.length}): ${urgentTasks.map(t=>t.text).join(", ")||"none"}
-OVERDUE (${overdueTasks.length}): ${overdueTasks.map(t=>t.text).join(", ")||"none"}
-ALL ACTIVE (${activeTasks.length}): ${activeTasks.map(t=>`${t.text} [${t.priority}]`).join(", ")||"none"}
-DONE TODAY (${doneTodayTasks.length}): ${doneTodayTasks.map(t=>t.text).join(", ")||"none"}
-IDEAS PARKED: ${ideas.map(i=>i.text).join(", ")||"none"}
-
-Current mode: ${currentMode==="morning"?"Morning check-in -- help them start the day with clarity and pick ONE thing to focus on first":currentMode==="focus"?"Focus mode -- they're working on something specific, keep them on track, check in, don't let them spiral or context-switch":currentMode==="eod"?"End of day -- review what got done, celebrate genuinely, help them close out and set up tomorrow":"General coaching chat"}
-
-Be direct about the urgent and overdue tasks if they come up. Don't let ${displayName} avoid them without at least naming it. But don't lecture -- one nudge is enough.`;
-
-      const startMode = async (selectedMode) => {
-        setMode(selectedMode);
-        setMessages([]);
-        setLoading(true);
-        const openers = {
-          morning: `Good morning ${displayName}! Let's set you up for a great day. I can see your list -- talk to me. How are you feeling about today?`,
-          focus: `Focus mode activated. What are we working on right now? Just one thing.`,
-          eod: `Right, let's wrap this day up properly. How are you feeling about what got done today?`
-        };
-        // Let coach open the conversation
-        try {
-          const res = await fetch(EDGE_URL, {
-            method:"POST",
-            headers:{"Content-Type":"application/json","Authorization":`Bearer ${SUPABASE_KEY}`},
-            body: JSON.stringify({
-              system: systemPrompt(selectedMode),
-              messages: [{role:"user", content: `Start the ${selectedMode==="morning"?"morning check-in":selectedMode==="focus"?"focus session":"end of day review"} for ${displayName}.`}]
-            })
-          });
-          const data = await res.json();
-          const text = (data.content?.[0]?.text||openers[selectedMode]).trim();
-          setMessages([{role:"assistant", content:text}]);
-        } catch(e) {
-          setMessages([{role:"assistant", content:openers[selectedMode]}]);
-        }
-        setLoading(false);
-        setTimeout(()=>inputRef.current?.focus(), 100);
-      };
-
-      const send = async () => {
-        const msg = input.trim(); if(!msg||loading) return;
-        setInput("");
-        const nc = [...messages, {role:"user", content:msg}];
-        setMessages(nc); setLoading(true);
-        try {
-          const res = await fetch(EDGE_URL, {
-            method:"POST",
-            headers:{"Content-Type":"application/json","Authorization":`Bearer ${SUPABASE_KEY}`},
-            body: JSON.stringify({system: systemPrompt(mode), messages: nc.map(m=>({role:m.role,content:m.content}))})
-          });
-          const data = await res.json();
-          const text = (data.content?.[0]?.text||"").trim();
-          setMessages(p=>[...p,{role:"assistant",content:text}]);
-        } catch(e) {
-          setMessages(p=>[...p,{role:"assistant",content:"Something went wrong -- try again."}]);
-        }
-        setLoading(false);
-      };
-
-      if(!mode) return (
-        <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"40px 20px",gap:24}}>
-          <div style={{textAlign:"center",marginBottom:8}}>
-            <div style={{fontSize:36,marginBottom:8}}>🎯</div>
-            <div style={{fontWeight:800,fontSize:20,color:"#111",marginBottom:6}}>Hey {displayName}!</div>
-            <div style={{fontSize:14,color:"#666",lineHeight:1.6,maxWidth:300}}>
-              I can see your list. {urgentTasks.length>0?`You've got ${urgentTasks.length} urgent task${urgentTasks.length===1?"":"s"} waiting.`:"Let's make today count."} What do you need?
-            </div>
-          </div>
-          <div style={{display:"flex",flexDirection:"column",gap:12,width:"100%",maxWidth:320}}>
-            <button onClick={()=>startMode("morning")} style={{background:"#fff",border:"2px solid #29abac",borderRadius:12,padding:"16px 20px",cursor:"pointer",textAlign:"left",transition:"all 0.15s"}}>
-              <div style={{fontWeight:700,fontSize:15,color:"#29abac",marginBottom:2}}>☀️ Morning check-in</div>
-              <div style={{fontSize:13,color:"#888"}}>Set your focus and start the day right</div>
-            </button>
-            <button onClick={()=>startMode("focus")} style={{background:"#fff",border:"2px solid #8b5cf6",borderRadius:12,padding:"16px 20px",cursor:"pointer",textAlign:"left"}}>
-              <div style={{fontWeight:700,fontSize:15,color:"#8b5cf6",marginBottom:2}}>⚡ Focus mode</div>
-              <div style={{fontSize:13,color:"#888"}}>Lock in on one thing and get it done</div>
-            </button>
-            <button onClick={()=>startMode("eod")} style={{background:"#fff",border:"2px solid #f97316",borderRadius:12,padding:"16px 20px",cursor:"pointer",textAlign:"left"}}>
-              <div style={{fontWeight:700,fontSize:15,color:"#f97316",marginBottom:2}}>🌙 End of day</div>
-              <div style={{fontSize:13,color:"#888"}}>Review, celebrate wins, set up tomorrow</div>
-            </button>
-            <button onClick={()=>startMode("general")} style={{background:"#fff",border:"2px solid #9ca3af",borderRadius:12,padding:"16px 20px",cursor:"pointer",textAlign:"left"}}>
-              <div style={{fontWeight:700,fontSize:15,color:"#666",marginBottom:2}}>💬 Just talk</div>
-              <div style={{fontSize:13,color:"#888"}}>General coaching, thinking out loud, whatever you need</div>
-            </button>
-          </div>
-        </div>
-      );
-
-      return (
-        <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-          <div style={{padding:"10px 20px",borderBottom:"1px solid #ebebeb",background:"#fafafa",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-            <div style={{fontSize:13,fontWeight:600,color:"#666"}}>
-              {mode==="morning"?"☀️ Morning check-in":mode==="focus"?"⚡ Focus mode":mode==="eod"?"🌙 End of day":"💬 Coaching chat"}
-            </div>
-            <button onClick={()=>{setMode(null);setMessages([]);}} style={{background:"transparent",border:"1px solid #ddd",color:"#999",borderRadius:8,padding:"4px 10px",fontSize:12,cursor:"pointer"}}>Change mode</button>
-          </div>
-          <div style={{flex:1,overflowY:"auto",padding:"16px 20px",display:"flex",flexDirection:"column",gap:12}}>
-            {messages.map((m,i)=>(
-              <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start",alignItems:"flex-end",gap:8}}>
-                {m.role==="assistant"&&<div style={{width:28,height:28,borderRadius:"50%",background:"#29abac",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0,marginBottom:2}}>🎯</div>}
-                <div style={{background:m.role==="user"?"#29abac":"#fff",border:`1px solid ${m.role==="user"?"#29abac":"#e8e8e8"}`,color:m.role==="user"?"#fff":"#111",borderRadius:m.role==="user"?"16px 16px 4px 16px":"16px 16px 16px 4px",padding:"10px 14px",maxWidth:"78%",fontSize:14,lineHeight:1.6,boxShadow:"0 1px 3px rgba(0,0,0,0.06)",whiteSpace:"pre-wrap"}}>{m.content}</div>
-              </div>
-            ))}
-            {loading&&(
-              <div style={{display:"flex",alignItems:"flex-end",gap:8}}>
-                <div style={{width:28,height:28,borderRadius:"50%",background:"#29abac",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>🎯</div>
-                <div style={{background:"#fff",border:"1px solid #e8e8e8",borderRadius:"16px 16px 16px 4px",padding:"10px 14px",fontSize:14,color:"#ccc"}}>...</div>
-              </div>
-            )}
-            <div ref={chatEnd}/>
-          </div>
-          <div style={{padding:"12px 20px",borderTop:"1px solid #e5e5e5",background:"#fafafa",display:"flex",gap:8}}>
-            <input ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&!e.shiftKey&&send()} placeholder="Talk to your coach..." style={{flex:1,background:"#fff",border:"1px solid #ddd",borderRadius:12,padding:"10px 14px",color:"#111",fontSize:14,outline:"none",fontWeight:400}}/>
-            <button onClick={send} disabled={loading} style={{background:"#29abac",border:"none",color:"#fff",fontWeight:800,borderRadius:12,padding:"0 18px",fontSize:14,cursor:loading?"not-allowed":"pointer",opacity:loading?0.5:1}}>Send</button>
-          </div>
-        </div>
-      );
-    }
- t, onToggle, onRemove, onSetPriority, onEditText, onEditDue, priorityMenu, setPriorityMenu, dragHandlers, isDragOver }) {
+    function TaskRow({ t, onToggle, onRemove, onSetPriority, onEditText, onEditDue, priorityMenu, setPriorityMenu, dragHandlers, isDragOver }) {
       const [editingText,setEditingText]=useState(false);
       const [editVal,setEditVal]=useState(t.text);
       const [editingDue,setEditingDue]=useState(false);
@@ -346,19 +208,16 @@ Be direct about the urgent and overdue tasks if they come up. Don't let ${displa
 
     function AppShell() {
       const [session,setSession]=useState(undefined);
-
       useEffect(()=>{
         db.auth.getSession().then(({data:{session}})=>setSession(session));
         const {data:{subscription}}=db.auth.onAuthStateChange((_,session)=>setSession(session));
         return ()=>subscription.unsubscribe();
       },[]);
-
       if(session===undefined) return (
         <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh"}}>
           <div style={{textAlign:"center"}}><div style={{fontSize:28,color:"#29abac",marginBottom:8}}>✦</div><div style={{color:"#999",fontSize:14}}>Loading...</div></div>
         </div>
       );
-
       if(!session) return <LoginScreen/>;
       return <App session={session}/>;
     }
@@ -378,7 +237,7 @@ Be direct about the urgent and overdue tasks if they come up. Don't let ${displa
       const [newDue,setNewDue]=useState("");
       const [newIdea,setNewIdea]=useState("");
       const [promoId,setPromoId]=useState(null);
-      const [tab,setTab]=useState("coach");
+      const [tab,setTab]=useState("tasks");
       const [priMenu,setPriMenu]=useState(null);
       const [dragOver,setDragOver]=useState(null);
       const [recText,setRecText]=useState("");
@@ -415,15 +274,15 @@ Be direct about the urgent and overdue tasks if they come up. Don't let ${displa
             const lt=(tr.data||[]).map(mapTask);
             const li=(ir.data||[]).map(mapIdea);
             const lr=(rr.data||[]).map(mapRec);
-            setTasks(lt); setIdeas(li); setRecTasks(lr);
+            setTasks(lt);setIdeas(li);setRecTasks(lr);
             const calcD=days=>{if(!days)return null;const d=new Date();d.setDate(d.getDate()+days);return d.toISOString().split("T")[0];};
             const toFire=lr.filter(r=>shouldFire(r,lt));
             if(toFire.length>0){
               const rows=toFire.map(r=>({text:r.text,cat:r.cat,priority:r.priority,due:calcD(r.dueDays),done:false,recurring_id:r.id,user_id:uid}));
               const {data:ins}=await db.from('tasks').insert(rows).select();
-              if(ins) setTasks(p=>[...ins.map(mapTask),...p]);
+              if(ins)setTasks(p=>[...ins.map(mapTask),...p]);
             }
-          } catch(e){console.error(e);}
+          }catch(e){console.error(e);}
           setLoading(false);
         })();
       },[]);
@@ -507,7 +366,6 @@ Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_du
 
       return (
         <div style={{fontFamily:"'Inter',sans-serif",background:"#f5f5f5",minHeight:"100vh",color:"#111",display:"flex",flexDirection:"column",maxWidth:780,margin:"0 auto"}} onClick={()=>{setPriMenu(null);setPromoId(null);}}>
-
           <div style={{background:"#fff",borderBottom:"1px solid #e5e5e5",padding:"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:40}}>
             <div>
               <div style={{fontWeight:800,fontSize:18,color:"#29abac",letterSpacing:-0.5}}>{displayName}'s To Do List</div>
@@ -546,14 +404,10 @@ Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_du
           )}
 
           <div style={{display:"flex",borderBottom:"1px solid #e5e5e5",background:"#fff",position:"sticky",top:57,zIndex:40}}>
-            {[["tasks","Tasks"],["coach","Coach"],["ideas",`Ideas${ideas.length?` (${ideas.length})`:""}`],["recurring",`Recurring${recTasks.length?` (${recTasks.length})`:""}`]].map(([k,l])=>(
-              <button key={k} onClick={()=>setTab(k)} style={{flex:1,padding:"10px",border:"none",background:"transparent",color:tab===k?"#29abac":"#666",fontWeight:700,fontSize:12,borderBottom:tab===k?"2px solid #29abac":"2px solid transparent",cursor:"pointer"}}>{l}</button>
+            {[["tasks","Tasks"],["ideas",`Ideas${ideas.length?` (${ideas.length})`:""}`],["recurring",`Recurring${recTasks.length?` (${recTasks.length})`:""}`]].map(([k,l])=>(
+              <button key={k} onClick={()=>setTab(k)} style={{flex:1,padding:"10px",border:"none",background:"transparent",color:tab===k?"#29abac":"#666",fontWeight:700,fontSize:13,borderBottom:tab===k?"2px solid #29abac":"2px solid transparent",cursor:"pointer"}}>{l}</button>
             ))}
           </div>
-
-          {tab==="coach"&&(
-            <CoachTab tasks={tasks} ideas={ideas} displayName={displayName} uid={uid}/>
-          )}
 
           {tab==="tasks"&&(
             <div style={{flex:1}}>
