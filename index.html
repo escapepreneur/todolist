@@ -325,23 +325,24 @@ Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_du
           const raw=(data.content?.[0]?.text||"").trim();
           let parsed;
           try{parsed=JSON.parse(raw.replace(/```json|```/g,"").trim());}catch{parsed={message:raw,actions:[]};}
-          setAiChat(p=>[...p,{role:"assistant",content:`DEBUG: actions=${JSON.stringify(parsed.actions)} msg=${parsed.message}`}]);
           if(parsed.actions?.length){
             for(const a of parsed.actions){
-              if(a.type==="add"){
-                const{data:d,error:e}=await db.from('tasks').insert({text:a.text,cat:CATS.includes(a.cat)?a.cat:"Business",priority:["High","Normal"].includes(a.priority)?a.priority:"High",due:a.due||null,done:false,user_id:uid}).select().single();
-                if(e){console.error("Insert failed:",e);setAiChat(p=>[...p,{role:"assistant",content:`Insert error: ${e.message}`}]);}
+              const type = a.type || a.action;
+              const cat = a.cat || a.category || "Business";
+              if(type==="add"){
+                const{data:d,error:e}=await db.from('tasks').insert({text:a.text,cat:CATS.includes(cat)?cat:"Business",priority:["High","Normal"].includes(a.priority)?a.priority:"High",due:a.due||null,done:false,user_id:uid}).select().single();
+                if(e){console.error("Insert failed:",e);}
                 else if(d)setTasks(p=>[mapTask(d),...p]);
               }
-              else if(a.type==="complete"){await db.from('tasks').update({done:true}).eq('id',a.id).eq('user_id',uid);setTasks(p=>p.map(t=>t.id===a.id?{...t,done:true}:t));}
-              else if(a.type==="uncomplete"){await db.from('tasks').update({done:false}).eq('id',a.id).eq('user_id',uid);setTasks(p=>p.map(t=>t.id===a.id?{...t,done:false}:t));}
-              else if(a.type==="delete"){await db.from('tasks').delete().eq('id',a.id).eq('user_id',uid);setTasks(p=>p.filter(t=>t.id!==a.id));}
-              else if(a.type==="set_priority"){await db.from('tasks').update({priority:a.priority}).eq('id',a.id).eq('user_id',uid);setTasks(p=>p.map(t=>t.id===a.id?{...t,priority:a.priority}:t));}
-              else if(a.type==="set_due"){await db.from('tasks').update({due:a.due||null}).eq('id',a.id).eq('user_id',uid);setTasks(p=>p.map(t=>t.id===a.id?{...t,due:a.due}:t));}
-              else if(a.type==="edit_text"){await db.from('tasks').update({text:a.text}).eq('id',a.id).eq('user_id',uid);setTasks(p=>p.map(t=>t.id===a.id?{...t,text:a.text}:t));}
-              else if(a.type==="add_idea"){const{data:d}=await db.from('ideas').insert({text:a.text,user_id:uid}).select().single();if(d)setIdeas(p=>[mapIdea(d),...p]);}
-              else if(a.type==="delete_idea"){await db.from('ideas').delete().eq('id',a.id).eq('user_id',uid);setIdeas(p=>p.filter(i=>i.id!==a.id));}
-              else if(a.type==="clear_done"){const ids=tasksRef.current.filter(t=>t.done).map(t=>t.id);if(ids.length){await db.from('tasks').delete().in('id',ids).eq('user_id',uid);setTasks(p=>p.filter(t=>!t.done));}}
+              else if(type==="complete"){await db.from('tasks').update({done:true}).eq('id',a.id).eq('user_id',uid);setTasks(p=>p.map(t=>t.id===a.id?{...t,done:true}:t));}
+              else if(type==="uncomplete"){await db.from('tasks').update({done:false}).eq('id',a.id).eq('user_id',uid);setTasks(p=>p.map(t=>t.id===a.id?{...t,done:false}:t));}
+              else if(type==="delete"){await db.from('tasks').delete().eq('id',a.id).eq('user_id',uid);setTasks(p=>p.filter(t=>t.id!==a.id));}
+              else if(type==="set_priority"){await db.from('tasks').update({priority:a.priority}).eq('id',a.id).eq('user_id',uid);setTasks(p=>p.map(t=>t.id===a.id?{...t,priority:a.priority}:t));}
+              else if(type==="set_due"){await db.from('tasks').update({due:a.due||null}).eq('id',a.id).eq('user_id',uid);setTasks(p=>p.map(t=>t.id===a.id?{...t,due:a.due}:t));}
+              else if(type==="edit_text"){await db.from('tasks').update({text:a.text}).eq('id',a.id).eq('user_id',uid);setTasks(p=>p.map(t=>t.id===a.id?{...t,text:a.text}:t));}
+              else if(type==="add_idea"){const{data:d}=await db.from('ideas').insert({text:a.text,user_id:uid}).select().single();if(d)setIdeas(p=>[mapIdea(d),...p]);}
+              else if(type==="delete_idea"){await db.from('ideas').delete().eq('id',a.id).eq('user_id',uid);setIdeas(p=>p.filter(i=>i.id!==a.id));}
+              else if(type==="clear_done"){const ids=tasksRef.current.filter(t=>t.done).map(t=>t.id);if(ids.length){await db.from('tasks').delete().in('id',ids).eq('user_id',uid);setTasks(p=>p.filter(t=>!t.done));}}
             }
           }
           setAiChat(p=>[...p,{role:"assistant",content:parsed.message||"Done!"}]);
