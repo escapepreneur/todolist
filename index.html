@@ -323,7 +323,9 @@ Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_du
           const res=await fetch(EDGE_URL,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${SUPABASE_KEY}`},body:JSON.stringify({system:sys,messages:nc.map(m=>({role:m.role,content:m.content}))})});
           const data=await res.json();
           const raw=(data.content?.[0]?.text||"").trim();
-          let parsed;try{parsed=JSON.parse(raw.replace(/```json|```/g,"").trim());}catch{parsed={message:raw,actions:[]};}
+          let parsed;
+          try{parsed=JSON.parse(raw.replace(/```json|```/g,"").trim());}catch{parsed={message:raw,actions:[]};}
+          setAiChat(p=>[...p,{role:"assistant",content:`DEBUG: actions=${JSON.stringify(parsed.actions)} msg=${parsed.message}`}]);
           if(parsed.actions?.length){
             for(const a of parsed.actions){
               if(a.type==="add"){
