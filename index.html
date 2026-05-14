@@ -326,7 +326,11 @@ Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_du
           let parsed;try{parsed=JSON.parse(raw.replace(/```json|```/g,"").trim());}catch{parsed={message:raw,actions:[]};}
           if(parsed.actions?.length){
             for(const a of parsed.actions){
-              if(a.type==="add"){const{data:d}=await db.from('tasks').insert({text:a.text,cat:a.cat||"Business",priority:a.priority==="Urgent"?"High":(a.priority||"High"),due:a.due||null,done:false,user_id:uid}).select().single();if(d)setTasks(p=>[mapTask(d),...p]);}
+              if(a.type==="add"){
+                const{data:d,error:e}=await db.from('tasks').insert({text:a.text,cat:CATS.includes(a.cat)?a.cat:"Business",priority:["High","Normal"].includes(a.priority)?a.priority:"High",due:a.due||null,done:false,user_id:uid}).select().single();
+                if(e){console.error("Insert failed:",e);setAiChat(p=>[...p,{role:"assistant",content:`Insert error: ${e.message}`}]);}
+                else if(d)setTasks(p=>[mapTask(d),...p]);
+              }
               else if(a.type==="complete"){await db.from('tasks').update({done:true}).eq('id',a.id).eq('user_id',uid);setTasks(p=>p.map(t=>t.id===a.id?{...t,done:true}:t));}
               else if(a.type==="uncomplete"){await db.from('tasks').update({done:false}).eq('id',a.id).eq('user_id',uid);setTasks(p=>p.map(t=>t.id===a.id?{...t,done:false}:t));}
               else if(a.type==="delete"){await db.from('tasks').delete().eq('id',a.id).eq('user_id',uid);setTasks(p=>p.filter(t=>t.id!==a.id));}
