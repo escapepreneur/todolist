@@ -86,36 +86,6 @@
       );
     }
 
-    function LoginScreen() {
-      const [email,setEmail]=useState("");
-      const [password,setPassword]=useState("");
-      const [error,setError]=useState("");
-      const [loading,setLoading]=useState(false);
-      const login=async()=>{
-        if(!email.trim()||!password.trim())return;
-        setLoading(true);setError("");
-        const {error:err}=await db.auth.signInWithPassword({email,password});
-        if(err){setError("Invalid email or password.");setLoading(false);}
-      };
-      return (
-        <div style={{fontFamily:"'Inter',sans-serif",background:"#f5f5f5",minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <div style={{background:"#fff",borderRadius:16,padding:"40px 32px",boxShadow:"0 4px 24px rgba(0,0,0,0.08)",maxWidth:360,width:"90%",textAlign:"center"}}>
-            <div style={{fontSize:32,marginBottom:8}}>✦</div>
-            <div style={{fontWeight:800,fontSize:20,color:"#29abac",marginBottom:4}}>To Do List</div>
-            <div style={{fontSize:14,color:"#999",marginBottom:28}}>Sign in to continue</div>
-            <input value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&login()} placeholder="Email address" type="email" autoFocus
-              style={{width:"100%",background:"#f9fafb",border:"1px solid #ddd",borderRadius:8,padding:"10px 14px",fontSize:14,outline:"none",color:"#111",boxSizing:"border-box",marginBottom:10,fontWeight:400}}/>
-            <input value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&login()} placeholder="Password" type="password"
-              style={{width:"100%",background:"#f9fafb",border:"1px solid #ddd",borderRadius:8,padding:"10px 14px",fontSize:14,outline:"none",color:"#111",boxSizing:"border-box",marginBottom:16,fontWeight:400}}/>
-            {error&&<div style={{color:"#ef4444",fontSize:13,marginBottom:12}}>{error}</div>}
-            <button onClick={login} disabled={loading} style={{width:"100%",background:"#29abac",border:"none",color:"#fff",fontWeight:800,borderRadius:8,padding:"11px",fontSize:15,cursor:loading?"not-allowed":"pointer",opacity:loading?0.6:1}}>
-              {loading?"Signing in...":"Sign in"}
-            </button>
-          </div>
-        </div>
-      );
-    }
-
     function TaskRow({ t, onToggle, onRemove, onSetPriority, onEditText, onEditDue, priorityMenu, setPriorityMenu, dragHandlers, isDragOver }) {
       const [editingText,setEditingText]=useState(false);
       const [editVal,setEditVal]=useState(t.text);
@@ -202,6 +172,36 @@
               </div>
             </div>
           )}
+        </div>
+      );
+    }
+
+    function LoginScreen() {
+      const [email,setEmail]=useState("");
+      const [password,setPassword]=useState("");
+      const [error,setError]=useState("");
+      const [loading,setLoading]=useState(false);
+      const login=async()=>{
+        if(!email.trim()||!password.trim())return;
+        setLoading(true);setError("");
+        const {error:err}=await db.auth.signInWithPassword({email,password});
+        if(err){setError("Invalid email or password.");setLoading(false);}
+      };
+      return (
+        <div style={{fontFamily:"'Inter',sans-serif",background:"#f5f5f5",minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div style={{background:"#fff",borderRadius:16,padding:"40px 32px",boxShadow:"0 4px 24px rgba(0,0,0,0.08)",maxWidth:360,width:"90%",textAlign:"center"}}>
+            <div style={{fontSize:32,marginBottom:8}}>✦</div>
+            <div style={{fontWeight:800,fontSize:20,color:"#29abac",marginBottom:4}}>To Do List</div>
+            <div style={{fontSize:14,color:"#999",marginBottom:28}}>Sign in to continue</div>
+            <input value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&login()} placeholder="Email address" type="email" autoFocus
+              style={{width:"100%",background:"#f9fafb",border:"1px solid #ddd",borderRadius:8,padding:"10px 14px",fontSize:14,outline:"none",color:"#111",boxSizing:"border-box",marginBottom:10,fontWeight:400}}/>
+            <input value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&login()} placeholder="Password" type="password"
+              style={{width:"100%",background:"#f9fafb",border:"1px solid #ddd",borderRadius:8,padding:"10px 14px",fontSize:14,outline:"none",color:"#111",boxSizing:"border-box",marginBottom:16,fontWeight:400}}/>
+            {error&&<div style={{color:"#ef4444",fontSize:13,marginBottom:12}}>{error}</div>}
+            <button onClick={login} disabled={loading} style={{width:"100%",background:"#29abac",border:"none",color:"#fff",fontWeight:800,borderRadius:8,padding:"11px",fontSize:15,cursor:loading?"not-allowed":"pointer",opacity:loading?0.6:1}}>
+              {loading?"Signing in...":"Sign in"}
+            </button>
+          </div>
         </div>
       );
     }
@@ -366,6 +366,7 @@ Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_du
 
       return (
         <div style={{fontFamily:"'Inter',sans-serif",background:"#f5f5f5",minHeight:"100vh",color:"#111",display:"flex",flexDirection:"column",maxWidth:780,margin:"0 auto"}} onClick={()=>{setPriMenu(null);setPromoId(null);}}>
+
           <div style={{background:"#fff",borderBottom:"1px solid #e5e5e5",padding:"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:40}}>
             <div>
               <div style={{fontWeight:800,fontSize:18,color:"#29abac",letterSpacing:-0.5}}>{displayName}'s To Do List</div>
@@ -386,7 +387,7 @@ Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_du
           {tab==="tasks"&&aiOpen&&(
             <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderBottom:"1px solid #e5e5e5",padding:"12px 20px",display:"flex",flexDirection:"column",gap:8}}>
               <div style={{fontSize:12,color:"#888"}}>Type naturally — e.g. <em>"Add call accountant to Business, High, due Friday"</em></div>
-              <div style={{maxHeight:160,overflowY:"auto",display:"flex",flexDirection:"column",gap:8}}>
+              <div style={{maxHeight:200,overflowY:"auto",display:"flex",flexDirection:"column",gap:8}}>
                 {aiChat.map((m,i)=>(
                   <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}>
                     <div style={{background:m.role==="user"?"#29abac18":"#f9fafb",border:`1px solid ${m.role==="user"?"#29abac44":"#e8e8e8"}`,color:"#111",borderRadius:m.role==="user"?"12px 12px 4px 12px":"12px 12px 12px 4px",padding:"8px 12px",maxWidth:"85%",fontSize:13,lineHeight:1.5}}>{m.content}</div>
