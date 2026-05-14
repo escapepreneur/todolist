@@ -35,11 +35,10 @@
     const CAT_COLORS = { Personal:"#8b5cf6", Business:"#29abac", Urgent:"#ef4444", Other:"#f59e0b" };
     const CATS = ["Business","Personal","Urgent","Other"];
     const PRIORITY_CONFIG = {
-      Urgent:{ color:"#ef4444", bg:"#fef2f2", border:"#fecaca" },
       High:  { color:"#f97316", bg:"#fff7ed", border:"#fed7aa" },
       Normal:{ color:"#9ca3af", bg:"#f9fafb", border:"#e5e7eb" }
     };
-    const PRIORITIES = ["Urgent","High","Normal"];
+    const PRIORITIES = ["High","Normal"];
     const DAYS = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 
     const todayStr = () => new Date().toISOString().split("T")[0];
@@ -233,7 +232,7 @@
       const [filter,setFilter]=useState("All");
       const [newText,setNewText]=useState("");
       const [newCat,setNewCat]=useState("Business");
-      const [newPri,setNewPri]=useState("Normal");
+      const [newPri,setNewPri]=useState("High");
       const [newDue,setNewDue]=useState("");
       const [newIdea,setNewIdea]=useState("");
       const [promoId,setPromoId]=useState(null);
@@ -318,7 +317,7 @@
 Today: ${todayStr()}
 TASKS:\n${ct.length?ct.map(t=>`ID:${t.id}|${t.text}|${t.cat}|${t.priority}|due:${t.due||"none"}|${t.done?"DONE":"active"}`).join("\n"):"none"}
 IDEAS:\n${ci.length?ci.map(i=>`ID:${i.id}|${i.text}`).join("\n"):"none"}
-Categories: Business,Personal,Urgent,Other. Priorities: Urgent,High,Normal. Dates: YYYY-MM-DD.
+Categories: Business,Personal,Urgent,Other. Priorities: High,Normal. Dates: YYYY-MM-DD.
 Respond ONLY with valid JSON: {"message":"...","actions":[]}
 Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_due|add_idea|delete_idea`;
           const res=await fetch(EDGE_URL,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${SUPABASE_KEY}`},body:JSON.stringify({system:sys,messages:nc.map(m=>({role:m.role,content:m.content}))})});
@@ -327,7 +326,7 @@ Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_du
           let parsed;try{parsed=JSON.parse(raw.replace(/```json|```/g,"").trim());}catch{parsed={message:raw,actions:[]};}
           if(parsed.actions?.length){
             for(const a of parsed.actions){
-              if(a.type==="add"){const{data:d}=await db.from('tasks').insert({text:a.text,cat:a.cat||"Business",priority:a.priority||"Normal",due:a.due||null,done:false,user_id:uid}).select().single();if(d)setTasks(p=>[mapTask(d),...p]);}
+              if(a.type==="add"){const{data:d}=await db.from('tasks').insert({text:a.text,cat:a.cat||"Business",priority:a.priority==="Urgent"?"High":(a.priority||"High"),due:a.due||null,done:false,user_id:uid}).select().single();if(d)setTasks(p=>[mapTask(d),...p]);}
               else if(a.type==="complete"){await db.from('tasks').update({done:true}).eq('id',a.id).eq('user_id',uid);setTasks(p=>p.map(t=>t.id===a.id?{...t,done:true}:t));}
               else if(a.type==="uncomplete"){await db.from('tasks').update({done:false}).eq('id',a.id).eq('user_id',uid);setTasks(p=>p.map(t=>t.id===a.id?{...t,done:false}:t));}
               else if(a.type==="delete"){await db.from('tasks').delete().eq('id',a.id).eq('user_id',uid);setTasks(p=>p.filter(t=>t.id!==a.id));}
@@ -385,9 +384,9 @@ Actions: add|edit_text|complete|uncomplete|delete|clear_done|set_priority|set_du
           </div>
 
           {tab==="tasks"&&aiOpen&&(
-            <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderBottom:"1px solid #e5e5e5",padding:"12px 20px",display:"flex",flexDirection:"column",gap:8}}>
+            <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderBottom:"1px solid #e5e5e5",padding:"12px 20px",display:"flex",flexDirection:"column",gap:8,position:"sticky",top:57,zIndex:39}}>
               <div style={{fontSize:12,color:"#888"}}>Type naturally — e.g. <em>"Add call accountant to Business, High, due Friday"</em></div>
-              <div style={{maxHeight:200,overflowY:"auto",display:"flex",flexDirection:"column",gap:8}}>
+              <div style={{maxHeight:160,overflowY:"auto",display:"flex",flexDirection:"column",gap:8}} onScroll={e=>e.stopPropagation()}>
                 {aiChat.map((m,i)=>(
                   <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}>
                     <div style={{background:m.role==="user"?"#29abac18":"#f9fafb",border:`1px solid ${m.role==="user"?"#29abac44":"#e8e8e8"}`,color:"#111",borderRadius:m.role==="user"?"12px 12px 4px 12px":"12px 12px 12px 4px",padding:"8px 12px",maxWidth:"85%",fontSize:13,lineHeight:1.5}}>{m.content}</div>
